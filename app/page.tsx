@@ -115,13 +115,13 @@ export default function Home() {
             <h2 className="text-6xl font-black leading-tight text-[#111827]">
               Fast & Reliable
               <span className="block text-green-700 mt-2">
-                Tree Removal Services
+                Removal Services
               </span>
             </h2>
 
             <p className="mt-8 text-xl text-gray-600 leading-relaxed max-w-xl">
-              Professional tree removal, trimming, storm cleanup, hauling,
-              and emergency services for residential and commercial properties.
+              Professional tree removal, junk removal, snow removal, also providing
+              emergency services for residential and commercial properties.
             </p>
 
             <div className="flex gap-4 mt-10">
