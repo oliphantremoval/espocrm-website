@@ -20,7 +20,15 @@ export async function POST(req: Request) {
           firstName: body.firstName,
           lastName: body.lastName,
           emailAddress: body.email,
-          phoneNumber: body.phone,
+
+          phoneNumber: [
+            {
+              phoneNumber: body.phone,
+              primary: true,
+              type: 'Mobile',
+            },
+          ],
+
           accountName: body.company,
           description: body.message,
         }),
