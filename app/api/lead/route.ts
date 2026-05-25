@@ -26,11 +26,24 @@ export async function POST(req: Request) {
       }
     );
 
-    const crmText = await crmResponse.text();
+    const crmData = await crmResponse.text();
 
-    console.log('CRM RESPONSE:', crmText);
+    console.log('ESPCRM RESPONSE:', crmData);
 
-    // SEND EMAIL NOTIFICATION
+    // STOP if CRM failed
+    if (!crmResponse.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          crmError: crmData,
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    // EMAIL ONLY AFTER SUCCESSFUL LEAD CREATION
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -63,7 +76,7 @@ ${body.message}
       success: true,
     });
   } catch (error: any) {
-    console.error(error);
+    console.error('FULL ERROR:', error);
 
     return NextResponse.json(
       {
