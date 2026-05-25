@@ -1,14 +1,12 @@
 import { NextResponse } from 'next/server';
+import nodemailer from 'nodemailer';
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    console.log('FORM DATA:', body);
-
-    console.log('CRM URL:', process.env.ESPOCRM_URL);
-
-    const response = await fetch(
+    // CREATE LEAD IN ESPOCRM
+    const crmResponse = await fetch(
       `${process.env.ESPOCRM_URL}/Lead`,
       {
         method: 'POST',
@@ -20,6 +18,7 @@ export async function POST(req: Request) {
           firstName: body.firstName,
           lastName: body.lastName,
           emailAddress: body.email,
+          phoneNumber: body.phone,
           accountName: body.company,
           description: body.message,
           status: 'New',
@@ -27,16 +26,44 @@ export async function POST(req: Request) {
       }
     );
 
-    const text = await response.text();
+    const crmText = await crmResponse.text();
 
-    console.log('ESPCRM RESPONSE:', text);
+    console.log('CRM RESPONSE:', crmText);
+
+    // SEND EMAIL NOTIFICATION
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.SMTP_EMAIL,
+        pass: process.env.SMTP_PASSWORD,
+      },
+    });
+
+    await transporter.sendMail({
+      from: process.env.SMTP_EMAIL,
+      to: process.env.NOTIFICATION_EMAIL,
+      subject: `New Quote Request - ${body.firstName} ${body.lastName}`,
+      text: `
+New quote request received.
+
+Name: ${body.firstName} ${body.lastName}
+
+Email: ${body.email}
+
+Phone: ${body.phone}
+
+Company/Address: ${body.company}
+
+Message:
+${body.message}
+      `,
+    });
 
     return NextResponse.json({
       success: true,
-      response: text,
     });
   } catch (error: any) {
-    console.error('FULL ERROR:', error);
+    console.error(error);
 
     return NextResponse.json(
       {
