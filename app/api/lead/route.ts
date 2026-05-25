@@ -4,6 +4,10 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
+    console.log('FORM DATA:', body);
+
+    console.log('CRM URL:', process.env.ESPOCRM_URL);
+
     const response = await fetch(
       `${process.env.ESPOCRM_URL}/Lead`,
       {
@@ -16,24 +20,28 @@ export async function POST(req: Request) {
           firstName: body.firstName,
           lastName: body.lastName,
           emailAddress: body.email,
-          phoneNumber: body.phone,
           accountName: body.company,
           description: body.message,
           status: 'New',
-          source: 'Website',
         }),
       }
     );
 
-    if (!response.ok) {
-      throw new Error('Failed');
-    }
+    const text = await response.text();
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
+    console.log('ESPCRM RESPONSE:', text);
+
+    return NextResponse.json({
+      success: true,
+      response: text,
+    });
+  } catch (error: any) {
+    console.error('FULL ERROR:', error);
+
     return NextResponse.json(
       {
         success: false,
+        error: error.message,
       },
       {
         status: 500,
