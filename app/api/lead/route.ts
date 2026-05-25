@@ -5,6 +5,8 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
+    console.log('FORM DATA:', body);
+
     // CREATE LEAD IN ESPOCRM
     const crmResponse = await fetch(
       `${process.env.ESPOCRM_URL}/Lead`,
@@ -21,7 +23,6 @@ export async function POST(req: Request) {
           phoneNumber: body.phone,
           accountName: body.company,
           description: body.message,
-          status: 'New',
         }),
       }
     );
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
 
     console.log('ESPCRM RESPONSE:', crmData);
 
-    // STOP if CRM failed
+    // IF ESPOCRM FAILS
     if (!crmResponse.ok) {
       return NextResponse.json(
         {
@@ -43,7 +44,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // EMAIL ONLY AFTER SUCCESSFUL LEAD CREATION
+    // SEND EMAIL NOTIFICATION
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
