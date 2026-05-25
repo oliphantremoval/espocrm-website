@@ -99,7 +99,7 @@ export default function Home() {
             </a>
 
             <a
-              href="tel:3137575521"
+              href="tel:8108821604"
               className="bg-green-700 hover:bg-green-800 text-white px-6 py-3 rounded-xl font-semibold transition"
             >
               Call Now
@@ -133,7 +133,7 @@ export default function Home() {
               </a>
 
               <a
-                href="tel:3137575521"
+                href="tel:8108821604"
                 className="border border-gray-300 hover:border-gray-400 px-8 py-4 rounded-xl font-semibold text-lg transition"
               >
                 Call Today
@@ -143,7 +143,7 @@ export default function Home() {
 
           <div>
             <img
-              src="https://images.unsplash.com/photo-1504307651254-35680f356dfd?q=80&w=1400&auto=format&fit=crop"
+              src="https://files.catbox.moe/fy4rb5.png"
               alt="Tree removal"
               className="rounded-3xl shadow-2xl w-full h-[500px] object-cover"
             />
@@ -171,12 +171,12 @@ export default function Home() {
                 desc: 'Safe and professional removal of hazardous or unwanted trees.',
               },
               {
-                title: 'Tree Trimming',
-                desc: 'Precision trimming to improve tree health and appearance.',
+                title: 'Junk Removal',
+                desc: 'Professional removal of scrap metal and other unwanted materials.',
               },
               {
-                title: 'Storm Cleanup',
-                desc: 'Emergency cleanup and debris hauling after storms.',
+                title: 'Snow Removal',
+                desc: 'Snow removal services for residential and commercial properties.',
               },
             ].map((service, index) => (
               <div
@@ -298,15 +298,15 @@ export default function Home() {
 
             <div className="space-y-4 text-lg text-gray-700">
               <p>
-                <strong>Phone:</strong> (313) 757-5521
+                <strong>Phone:</strong> (810) 882-1604
               </p>
 
               <p>
-                <strong>Email:</strong> info@oliphantremoval.com
+                <strong>Email:</strong> oliphantremoval@gmail.com
               </p>
 
               <p>
-                <strong>Service Area:</strong> Michigan and surrounding areas
+                <strong>Service Area:</strong> Lapeer county and surrounding areas
               </p>
             </div>
           </div>
