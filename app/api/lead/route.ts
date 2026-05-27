@@ -29,7 +29,7 @@ Phone: ${body.phone}
 Message:
 ${body.message}
             `,
-            status: 'New',
+            status: 'New Lead',
           }),
         }
       );
