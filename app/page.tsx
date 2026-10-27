@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 
 export default function Home() {
   const [loading, setLoading] = useState(false);
@@ -313,11 +312,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-      <footer className="max-w-7xl mx-auto px-6 pb-8 text-sm text-gray-500">
-        <Link href="/crm" className="hover:text-green-800 underline underline-offset-4">
-          Team workspace
-        </Link>
-      </footer>
     </main>
   );
 }

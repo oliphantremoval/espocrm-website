@@ -1,5 +1,7 @@
 # Oliphant Removal CRM
 
+**Access is disabled pending authentication.** The `/crm` server route returns 404 and the public website has no workspace link. This intentionally blocks fresh access in the updated deployment. The dashboard code and existing browser-local records are retained. Do not restore the dashboard route until server-side authentication is implemented and tested. Historical Vercel preview/deployment URLs must be protected or deleted separately; a new Git commit does not update those old builds.
+
 The first custom CRM is at `/crm`, alongside the public website at `/`. It manages customers, leads, estimates, scheduled jobs, and follow-up tasks for tree, junk, snow, and storm cleanup work.
 
 ## Start locally

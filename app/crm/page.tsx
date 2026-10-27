@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import Dashboard from "./dashboard";
-import "./crm.css";
+import { notFound } from "next/navigation";
 
 export const metadata: Metadata = {
   title: "Workspace | Oliphant Removal",
@@ -9,5 +8,6 @@ export const metadata: Metadata = {
 };
 
 export default function CrmPage() {
-  return <Dashboard />;
+  // Keep the workspace unavailable until server-side authentication is configured.
+  notFound();
 }
