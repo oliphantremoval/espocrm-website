@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cookies, headers } from "next/headers";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { getAuthConfig, verifySession, type AuthConfig } from "./crm-auth-core";
 
 export function ownerAuthConfig(): AuthConfig | null {
@@ -36,8 +36,7 @@ export async function ownerIsSignedIn(config: AuthConfig): Promise<boolean> {
 
 export async function requireOwner(): Promise<void> {
   const config = ownerAuthConfig();
-  if (!config) notFound();
-  if (!(await ownerIsSignedIn(config))) redirect("/crm/login");
+  if (!config || !(await ownerIsSignedIn(config))) redirect("/crm/login");
 }
 
 export function isSameOrigin(request: Request): boolean {

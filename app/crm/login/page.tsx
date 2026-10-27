@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { ownerAuthConfig, ownerIsSignedIn } from "@/lib/crm-auth";
 import OwnerLoginForm from "./login-form";
 
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default async function OwnerLoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const config = ownerAuthConfig();
-  if (!config) notFound();
+  if (!config) return <OwnerLoginForm configured={false} />;
   if (await ownerIsSignedIn(config)) redirect("/crm");
   const query = await searchParams;
   return <OwnerLoginForm invalid={query.error === "invalid"} />;

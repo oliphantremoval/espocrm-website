@@ -193,6 +193,37 @@
   text-align: center;
 }
 
+.owner-login-setup {
+  color: #61735b;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.owner-login-setup dl {
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid #e0e7d8;
+  border-radius: 7px;
+  background: #f7f9f2;
+}
+
+.owner-login-setup dt { color: #304b35; overflow-wrap: anywhere; }
+.owner-login-setup dd { margin: 4px 0 14px; font-size: 12px; }
+.owner-login-setup dd:last-child { margin-bottom: 0; }
+.owner-login-setup-link {
+  display: block;
+  margin-top: 18px;
+  padding: 12px;
+  border-radius: 7px;
+  background: #285d45;
+  color: #fff;
+  text-align: center;
+  font-weight: 600;
+  text-decoration: none;
+}
+.owner-login-setup-link:hover { background: #1b4934; }
+.owner-login-setup-note { margin-top: 12px; font-size: 11px; }
+
 .owner-login-footer {
   display: flex;
   align-items: center;

@@ -3,11 +3,13 @@ import Link from "next/link";
 import "./login.css";
 
 type OwnerLoginFormProps = {
+  configured?: boolean;
   invalid?: boolean;
   limited?: boolean;
 };
 
 export default function OwnerLoginForm({
+  configured = true,
   invalid = false,
   limited = false,
 }: OwnerLoginFormProps) {
@@ -42,12 +44,14 @@ export default function OwnerLoginForm({
             </svg>
           </span>
           <p className="owner-login-eyebrow">PRIVATE WORKSPACE</p>
-          <h1 id="owner-login-title">Owner sign-in</h1>
+          <h1 id="owner-login-title">{configured ? "Owner sign-in" : "Owner access is locked"}</h1>
           <p className="owner-login-intro">
-            Enter your owner password to access your workspace.
+            {configured
+              ? "Enter your owner password to access your workspace."
+              : "This deployment needs its owner-login settings before sign-in is available."}
           </p>
 
-          <form action="/crm/auth/login" method="post" className="owner-login-form">
+          {configured ? <form action="/crm/auth/login" method="post" className="owner-login-form">
             {error && (
               <p id="owner-login-error" className="owner-login-error" role="alert" aria-live="polite">
                 {error}
@@ -71,7 +75,18 @@ export default function OwnerLoginForm({
                 <path d="M5 12h14m-5-5 5 5-5 5" />
               </svg>
             </button>
-          </form>
+          </form> : <div className="owner-login-setup">
+            <p>In your Vercel project, add these environment variables for <strong>Production</strong>:</p>
+            <dl>
+              <dt><code>CRM_OWNER_PASSWORD</code></dt>
+              <dd>Your private password, at least 20 characters.</dd>
+              <dt><code>CRM_SESSION_SECRET</code></dt>
+              <dd>A separate secret, at least 32 random characters.</dd>
+            </dl>
+            <p>Save the settings and redeploy, then return here. Settings saved in Codex do not automatically transfer to Vercel.</p>
+            <a href="https://vercel.com/dashboard" className="owner-login-setup-link">Open Vercel dashboard</a>
+            <p className="owner-login-setup-note">Keep these values private. There is no default password.</p>
+          </div>}
 
           <p className="owner-login-access">Owner access only.</p>
         </div>

@@ -2,11 +2,11 @@
 
 The custom CRM is at `/crm`, alongside the public website at `/`. It manages customers, leads, estimates, scheduled jobs, and follow-up tasks for tree, junk, snow, and storm cleanup work.
 
-Access requires an owner sign-in. The workspace and sign-in page return 404 until valid credentials are configured on the server. There is no default password, public registration, or employee account creation. The public website has no workspace link.
+Access requires an owner sign-in. Without a valid session, `/crm` redirects to `/crm/login`. If the server credentials are missing or invalid, that page displays **Owner access is locked** with setup guidance and no password form; the dashboard remains unavailable. There is no default password, public registration, or employee account creation. The public website has no workspace link.
 
 ## Configure owner access
 
-In the existing Vercel project's environment variables, add these values securely:
+Sign into [Vercel](https://vercel.com/) with the account that owns the website, select its existing project, and open **Settings → Environment Variables**. Add these values securely:
 
 | Variable | Requirement |
 | --- | --- |
@@ -14,6 +14,8 @@ In the existing Vercel project's environment variables, add these values securel
 | `CRM_SESSION_SECRET` | A separate secret with at least 32 random characters and at most 1,024 characters. |
 
 Set them for **Production**. Include **Preview** only if you also want owner access in updated preview deployments. Then redeploy the project so the new deployment receives the values. Missing or invalid settings keep access blocked; simply deploying this code does not create credentials.
+
+Use **Visit** on the latest successful Production deployment, then append `/crm/login` to its address. An older deployment URL keeps its older code and settings. If the locked setup message persists, check the variable names, length requirements, Production scope, and whether the deployment was created after the settings were saved. Do not share their values when asking for help. Vercel may require its own account sign-in before the application page is visible.
 
 Use a password manager to generate and retain both values. For the session secret, you can alternatively run this command on your own trusted machine:
 
@@ -36,7 +38,7 @@ npm ci --cache /workspace/.cache/npm --no-audit --no-fund
 npm run dev -- --hostname 0.0.0.0
 ```
 
-Provide both owner-access variables through your local process environment before starting the server. Do not commit their values. Without them, workspace routes intentionally return 404.
+Provide both owner-access variables through your local process environment before starting the server. Do not commit their values. Without valid values, `/crm` redirects to the locked setup page at `/crm/login`, which has no sign-in form. Direct sign-in POST requests remain blocked with 404.
 
 After signing in, the dashboard starts with clearly labeled fictional sample records. Choose **Start empty** to clear them before entering your own records.
 

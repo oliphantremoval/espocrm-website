@@ -76,17 +76,24 @@ try:
             time.sleep(.2)
         else: raise AssertionError('Local auth test server did not become ready.')
 
-    for path in ['/crm', '/crm/login', '/crm?_rsc=blocked']:
-        code, _, body = request(path, base=BLOCKED)
-        assert code == 404, (path, code)
+    for path in ['/crm', '/crm?_rsc=blocked']:
+        code, hdrs, body = request(path, base=BLOCKED)
+        assert code == 307 and hdrs['Location'].endswith('/crm/login'), (path, code)
+        assert 'no-store' in hdrs.get('Cache-Control', '')
         assert 'Opening your workspace' not in body
+    code, hdrs, body = request('/crm/login', base=BLOCKED)
+    assert code == 200 and 'Owner access is locked' in body
+    assert 'no-store' in hdrs.get('Cache-Control', '')
+    assert 'CRM_OWNER_PASSWORD' in body and 'CRM_SESSION_SECRET' in body
+    assert 'name="password"' not in body and 'action="/crm/auth/login"' not in body
+    assert 'Opening your workspace' not in body and not any(ref in body for ref in module_refs)
     assert request('/crm/auth/login', method='POST', base=BLOCKED, password=PASSWORD, origin=BLOCKED)[0] == 404
     code, _, body = request('/', base=BLOCKED)
     assert code == 200 and 'Team workspace' not in body and 'href="/crm"' not in body
     code, _, body = request('/crm?_rsc=missing-config', base=BLOCKED, headers=rsc_headers)
-    assert code in (200, 404) and 'NEXT_HTTP_ERROR_FALLBACK;404' in body
+    assert code == 200 and 'NEXT_REDIRECT;replace;/crm/login;307;' in body
     assert not any(ref in body for ref in module_refs)
-    print('PASS: missing config denies page/login/direct POST/RSC; public homepage has no workspace link', flush=True)
+    print('PASS: missing config shows a locked setup page without a sign-in form or dashboard, denies direct POST, and redirects protected HTML/RSC; public homepage has no workspace link', flush=True)
 
     code, hdrs, body = request('/crm')
     assert code == 307 and hdrs['Location'].endswith('/crm/login')
@@ -127,6 +134,15 @@ try:
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(executable_path='/usr/bin/chromium', headless=True, args=['--no-sandbox'])
+        blocked_page = browser.new_page()
+        blocked_page.goto(BLOCKED + '/crm')
+        expect(blocked_page).to_have_url(BLOCKED + '/crm/login')
+        expect(blocked_page.get_by_role('heading', name='Owner access is locked', exact=True)).to_be_visible()
+        assert blocked_page.get_by_label('Password', exact=True).count() == 0
+        assert blocked_page.locator('input[type="password"], form[action="/crm/auth/login"]').count() == 0
+        assert blocked_page.get_by_role('button', name='Sign in', exact=True).count() == 0
+        assert blocked_page.get_by_role('heading', name='A clear view of the work ahead.').count() == 0
+        blocked_page.close()
         context = browser.new_context(viewport={'width': 1440, 'height': 1000}, extra_http_headers={'x-forwarded-for': '127.0.0.20'})
         page = context.new_page()
         errors = []
