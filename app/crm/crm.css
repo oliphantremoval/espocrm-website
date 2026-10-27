@@ -176,6 +176,8 @@
 .crm-modal .crm-error { margin: 0 27px 18px; }
 .crm-confirm-copy { padding: 22px 27px; color: #768269; font-size: 13px; line-height: 1.8; }
 .crm-mobile-menu { display: none; }
+.crm-signout { margin-bottom: 12px; }
+.crm-signout .crm-nav-item { min-height: 30px; padding-top: 5px; padding-bottom: 5px; font-size: 11px !important; color: #a6b9aa; }
 .crm-sr-only { position: absolute; left: 0; top: 0; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .crm-workspace-label { font-size: 9px; letter-spacing: 1.7px; color: #829a89; padding: 5px 14px 13px; }
 .crm-brand-mark { background: #fffaf4; padding: 3px; border-radius: 9px; flex-shrink: 0; }

@@ -1,8 +1,31 @@
 # Oliphant Removal CRM
 
-**Access is disabled pending authentication.** The `/crm` server route returns 404 and the public website has no workspace link. This intentionally blocks fresh access in the updated deployment. The dashboard code and existing browser-local records are retained. Do not restore the dashboard route until server-side authentication is implemented and tested. Historical Vercel preview/deployment URLs must be protected or deleted separately; a new Git commit does not update those old builds.
+The custom CRM is at `/crm`, alongside the public website at `/`. It manages customers, leads, estimates, scheduled jobs, and follow-up tasks for tree, junk, snow, and storm cleanup work.
 
-The first custom CRM is at `/crm`, alongside the public website at `/`. It manages customers, leads, estimates, scheduled jobs, and follow-up tasks for tree, junk, snow, and storm cleanup work.
+Access requires an owner sign-in. The workspace and sign-in page return 404 until valid credentials are configured on the server. There is no default password, public registration, or employee account creation. The public website has no workspace link.
+
+## Configure owner access
+
+In the existing Vercel project's environment variables, add these values securely:
+
+| Variable | Requirement |
+| --- | --- |
+| `CRM_OWNER_PASSWORD` | Your owner password: at least 20 characters and at most 1,024 characters. |
+| `CRM_SESSION_SECRET` | A separate secret with at least 32 random characters and at most 1,024 characters. |
+
+Set them for **Production**. Include **Preview** only if you also want owner access in updated preview deployments. Then redeploy the project so the new deployment receives the values. Missing or invalid settings keep access blocked; simply deploying this code does not create credentials.
+
+Use a password manager to generate and retain both values. For the session secret, you can alternatively run this command on your own trusted machine:
+
+```sh
+openssl rand -hex 32
+```
+
+Do not put either value in chat, source files, Git commits, or a variable beginning with `NEXT_PUBLIC_`. This workspace cannot configure your Vercel secrets for you. To reset the owner password or rotate the session secret, change the corresponding value in Vercel and redeploy. Rotation invalidates existing sessions for subsequent requests.
+
+When configured, visiting `/crm` without a valid session redirects to `/crm/login`. Sign-in is checked on the server for each workspace request. Successful sign-in sets a signed, two-hour `HttpOnly` cookie with `SameSite=Strict` and `Secure` in production. Login and logout accept same-origin POST requests. Login attempts have a best-effort per-process throttle; it is not a durable, shared rate limit across Vercel instances.
+
+**Older deployments need separate attention.** Existing Vercel preview and deployment URLs keep their old build, including any earlier unrestricted CRM page. Protect or delete those deployments through Vercel; a new commit does not change them. Existing open tabs can also retain their loaded dashboard until refreshed or navigated away.
 
 ## Start locally
 
@@ -13,7 +36,9 @@ npm ci --cache /workspace/.cache/npm --no-audit --no-fund
 npm run dev -- --hostname 0.0.0.0
 ```
 
-The dashboard starts with clearly labeled fictional sample records. Choose **Start empty** to clear them before entering your own records.
+Provide both owner-access variables through your local process environment before starting the server. Do not commit their values. Without them, workspace routes intentionally return 404.
+
+After signing in, the dashboard starts with clearly labeled fictional sample records. Choose **Start empty** to clear them before entering your own records.
 
 ## Daily workflow
 
@@ -31,7 +56,9 @@ Records are saved in this browser's local storage for this site address. They su
 
 Use **Export backup** regularly and before clearing the workspace. The JSON file contains customer contact details without encryption; store it privately. **Import backup** validates an exported file and asks before replacing the current workspace. Import replaces records rather than merging them. Files are limited to 5 MB.
 
-This version has no account login, shared database, team sync, automatic notifications, invoice delivery, or payment processing. Anyone using the same browser profile can access its local workspace. Shared team use needs server storage and access controls in a later implementation.
+Signing out removes the session cookie. It does not encrypt or clear browser-local records, and anyone using the same browser profile can access that stored data through the browser. Use a trusted browser profile for your owner workspace.
+
+This version has owner sign-in but no shared database, separate employee accounts, team sync, automatic notifications, invoice delivery, or payment processing. Shared team use needs server storage and individual access controls in a later implementation.
 
 ## Existing website quote form
 
@@ -48,8 +75,10 @@ Keep credential values in secure environment settings. The existing endpoint cat
 ```sh
 npm run lint
 npx --no-install tsc --noEmit
-node --test tests/crm-model.test.mjs
+node --test tests/*.test.mjs
 npm run build
 ```
 
-The model tests use Node.js 24's built-in TypeScript support and require no test dependencies. They cover backup roundtrips, decimal estimates, malformed imports, linked-customer integrity, duplicate IDs, date validation, and unknown-field removal.
+The tests use Node.js 24's built-in TypeScript support and require no test dependencies. Model tests cover backup roundtrips, decimal estimates, malformed imports, linked-customer integrity, duplicate IDs, date validation, and unknown-field removal. Authentication tests cover credential configuration, password verification, and session validation, tampering, and expiration.
+
+After building, the cloud environment can also run `python3 tests/crm-access-smoke.py` using its installed Python Playwright and Chromium. It starts isolated local production servers with and without temporary test credentials, verifies HTML and RSC access controls, performs actual browser sign-in/sign-out including Back navigation, checks cookie/cache/CSRF behavior, and stops only its own servers. It does not configure real credentials or contact the live quote endpoint.

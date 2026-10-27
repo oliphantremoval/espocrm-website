@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { requireOwner } from "@/lib/crm-auth";
+import Dashboard from "./dashboard";
+import "./crm.css";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Workspace | Oliphant Removal",
@@ -7,7 +11,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function CrmPage() {
-  // Keep the workspace unavailable until server-side authentication is configured.
-  notFound();
+export default async function CrmPage() {
+  await requireOwner();
+  return <Dashboard />;
 }
