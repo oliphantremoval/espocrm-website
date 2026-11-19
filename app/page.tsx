@@ -99,7 +99,7 @@ export default function Home() {
             </a>
 
             <a
-              href="tel:8108821604"
+              href="tel:8105425833"
               className="bg-green-700 hover:bg-green-800 text-white px-6 py-3 rounded-xl font-semibold transition"
             >
               Call Now
@@ -133,7 +133,7 @@ export default function Home() {
               </a>
 
               <a
-                href="tel:8108821604"
+                href="tel:8105425833"
                 className="border border-gray-300 hover:border-gray-400 px-8 py-4 rounded-xl font-semibold text-lg transition"
               >
                 Call Today
@@ -298,7 +298,7 @@ export default function Home() {
 
             <div className="space-y-4 text-lg text-gray-700">
               <p>
-                <strong>Phone:</strong> (810) 882-1604
+                <strong>Phone:</strong> (810) 542-5833
               </p>
 
               <p>
