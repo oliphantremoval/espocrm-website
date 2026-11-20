@@ -9,10 +9,20 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function OwnerLoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function OwnerLoginPage({ searchParams }: { searchParams: Promise<{ error?: string; sent?: string }> }) {
   const config = ownerAuthConfig();
   if (!config) return <OwnerLoginForm configured={false} />;
   if (await ownerIsSignedIn(config)) redirect("/crm");
   const query = await searchParams;
-  return <OwnerLoginForm invalid={query.error === "invalid"} />;
+  return (
+    <OwnerLoginForm
+      authMode={config.mode}
+      invalid={query.error === "invalid"}
+      limited={query.error === "limited"}
+      linkInvalid={query.error === "link"}
+      emailFailed={query.error === "email"}
+      emailSent={query.sent === "1"}
+    />
+  );
 }
+

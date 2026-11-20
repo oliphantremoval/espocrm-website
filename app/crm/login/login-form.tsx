@@ -3,20 +3,32 @@ import Link from "next/link";
 import "./login.css";
 
 type OwnerLoginFormProps = {
+  authMode?: "email" | "password";
   configured?: boolean;
+  emailFailed?: boolean;
+  emailSent?: boolean;
   invalid?: boolean;
+  linkInvalid?: boolean;
   limited?: boolean;
 };
 
 export default function OwnerLoginForm({
+  authMode = "password",
   configured = true,
+  emailFailed = false,
+  emailSent = false,
   invalid = false,
+  linkInvalid = false,
   limited = false,
 }: OwnerLoginFormProps) {
   const error = limited
     ? "Too many sign-in attempts. Please wait, then try again."
     : invalid
       ? "That password was not recognized. Please try again."
+      : linkInvalid
+        ? "That sign-in link is invalid or has expired. Please request a new one."
+        : emailFailed
+          ? "We could not send a sign-in link. Please try again in a moment."
       : null;
 
   return (
@@ -47,11 +59,41 @@ export default function OwnerLoginForm({
           <h1 id="owner-login-title">{configured ? "Owner sign-in" : "Owner access is locked"}</h1>
           <p className="owner-login-intro">
             {configured
-              ? "Enter your owner password to access your workspace."
+              ? authMode === "email"
+                ? "Enter your owner email and we’ll send you a secure sign-in link."
+                : "Enter your owner password to access your workspace."
               : "This deployment needs its owner-login settings before sign-in is available."}
           </p>
 
-          {configured ? <form action="/crm/auth/login" method="post" className="owner-login-form">
+          {configured ? authMode === "email" ? <form action="/crm/auth/request-link" method="post" className="owner-login-form">
+            {error && (
+              <p id="owner-login-error" className="owner-login-error" role="alert" aria-live="polite">
+                {error}
+              </p>
+            )}
+            {emailSent && !error && (
+              <p className="owner-login-success" role="status" aria-live="polite">
+                If this is the owner email, check its inbox for a secure sign-in link.
+              </p>
+            )}
+            <label htmlFor="crm-email">Owner email</label>
+            <input
+              id="crm-email"
+              name="email"
+              type="email"
+              required
+              maxLength={254}
+              autoComplete="email"
+              inputMode="email"
+              aria-describedby={error ? "owner-login-error" : undefined}
+            />
+            <button type="submit">
+              Email me a sign-in link
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+                <path d="M5 12h14m-5-5 5 5-5 5" />
+              </svg>
+            </button>
+          </form> : <form action="/crm/auth/login" method="post" className="owner-login-form">
             {error && (
               <p id="owner-login-error" className="owner-login-error" role="alert" aria-live="polite">
                 {error}
@@ -78,10 +120,17 @@ export default function OwnerLoginForm({
           </form> : <div className="owner-login-setup">
             <p>In your Vercel project, add these environment variables for <strong>Production</strong>:</p>
             <dl>
+              <dt><code>CRM_OWNER_EMAIL</code></dt>
+              <dd>Your owner email address for secure email sign-in.</dd>
+              <dt><code>CRM_PUBLIC_URL</code></dt>
+              <dd>The public site address, such as https://oliphantremoval.com.</dd>
+              <dt><code>CRM_SESSION_SECRET</code></dt>
+              <dd>A private, random value of at least 32 characters.</dd>
+            </dl>
+            <p>Or use the existing password sign-in option:</p>
+            <dl>
               <dt><code>CRM_OWNER_PASSWORD</code></dt>
               <dd>Your private password, at least 20 characters.</dd>
-              <dt><code>CRM_SESSION_SECRET</code></dt>
-              <dd>A separate secret, at least 32 random characters.</dd>
             </dl>
             <p>Save the settings and redeploy, then return here. Settings saved in Codex do not automatically transfer to Vercel.</p>
             <a href="https://vercel.com/dashboard" className="owner-login-setup-link">Open Vercel dashboard</a>
@@ -99,3 +148,4 @@ export default function OwnerLoginForm({
     </main>
   );
 }
+

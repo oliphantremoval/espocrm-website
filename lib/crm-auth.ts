@@ -2,10 +2,28 @@ import "server-only";
 
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { getAuthConfig, verifySession, type AuthConfig } from "./crm-auth-core";
+import {
+  getAuthConfig,
+  getEmailAuthConfig,
+  verifyEmailSession,
+  verifySession,
+  type AuthConfig,
+  type EmailAuthConfig,
+} from "./crm-auth-core";
 
-export function ownerAuthConfig(): AuthConfig | null {
-  return getAuthConfig(process.env);
+export type OwnerAuthConfig =
+  | { mode: "email"; credentials: EmailAuthConfig }
+  | { mode: "password"; credentials: AuthConfig };
+
+export function ownerAuthConfig(): OwnerAuthConfig | null {
+  const emailCredentials = getEmailAuthConfig(process.env);
+  if (emailCredentials) return { mode: "email", credentials: emailCredentials };
+  const passwordCredentials = getAuthConfig(process.env);
+  return passwordCredentials ? { mode: "password", credentials: passwordCredentials } : null;
+}
+
+export function ownerEmailAuthConfig(): EmailAuthConfig | null {
+  return getEmailAuthConfig(process.env);
 }
 
 export function sessionCookieName(): string {
@@ -23,7 +41,7 @@ export function sessionCookieOptions() {
   };
 }
 
-export async function ownerIsSignedIn(config: AuthConfig): Promise<boolean> {
+export async function ownerIsSignedIn(config: OwnerAuthConfig): Promise<boolean> {
   // Next's cookie collection deduplicates names, so inspect the raw header first.
   const name = sessionCookieName();
   const rawCookies = (await headers()).get("cookie") ?? "";
@@ -31,7 +49,10 @@ export async function ownerIsSignedIn(config: AuthConfig): Promise<boolean> {
   if (matches.length !== 1) return false;
   const store = await cookies();
   const tokens = store.getAll(name);
-  return tokens.length === 1 && verifySession(tokens[0].value, config);
+  if (tokens.length !== 1) return false;
+  return config.mode === "email"
+    ? verifyEmailSession(tokens[0].value, config.credentials)
+    : verifySession(tokens[0].value, config.credentials);
 }
 
 export async function requireOwner(): Promise<void> {
@@ -48,3 +69,4 @@ export const privateHeaders = {
   "Cache-Control": "private, no-store, max-age=0",
   Pragma: "no-cache",
 };
+

@@ -50,7 +50,7 @@ async function readPassword(request: Request): Promise<string | null> {
 
 export async function POST(request: Request) {
   const config = ownerAuthConfig();
-  if (!config) return new NextResponse("Not found", { status: 404, headers: privateHeaders });
+  if (!config || config.mode !== "password") return new NextResponse("Not found", { status: 404, headers: privateHeaders });
   if (!isSameOrigin(request)) return new NextResponse("Forbidden", { status: 403, headers: privateHeaders });
   if (!allowAttempt(request)) {
     return new NextResponse("Too many sign-in attempts. Wait 15 minutes before trying again.", {
@@ -61,11 +61,11 @@ export async function POST(request: Request) {
 
   try {
     const password = await readPassword(request);
-    if (password === null || !(await verifyOwnerPassword(password, config))) {
+    if (password === null || !(await verifyOwnerPassword(password, config.credentials))) {
       return NextResponse.redirect(new URL("/crm/login?error=invalid", request.url), { status: 303, headers: privateHeaders });
     }
     const response = NextResponse.redirect(new URL("/crm", request.url), { status: 303, headers: privateHeaders });
-    response.cookies.set(sessionCookieName(), createSession(config), {
+    response.cookies.set(sessionCookieName(), createSession(config.credentials), {
       ...sessionCookieOptions(),
       maxAge: SESSION_MAX_AGE_SECONDS,
     });
@@ -74,3 +74,4 @@ export async function POST(request: Request) {
     return new NextResponse("Sign-in could not be completed. Please try again later.", { status: 503, headers: privateHeaders });
   }
 }
+

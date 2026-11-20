@@ -185,6 +185,17 @@
   line-height: 1.7;
 }
 
+.owner-login-success {
+  margin: 0 0 20px;
+  padding: 12px 14px;
+  border: 1px solid #d4e5c8;
+  border-radius: 7px;
+  background: #f1f8eb;
+  color: #416737;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
 .owner-login-access {
   margin: 19px 0 0;
   color: #92a084;
@@ -270,3 +281,4 @@
     transition: none;
   }
 }
+

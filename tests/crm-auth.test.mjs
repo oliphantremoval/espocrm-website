@@ -2,9 +2,15 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import test from 'node:test';
 import {
+  createEmailSession,
+  createOwnerLoginLink,
   createSession,
   getAuthConfig,
+  getEmailAuthConfig,
+  OWNER_LOGIN_LINK_MAX_AGE_SECONDS,
   SESSION_MAX_AGE_SECONDS,
+  verifyEmailSession,
+  verifyOwnerLoginLink,
   verifyOwnerPassword,
   verifySession,
 } from '../lib/crm-auth-core.ts';
@@ -13,6 +19,10 @@ import {
 const config = {
   ownerPassword: 'test-only-owner-password-never-use-in-production',
   sessionSecret: 'test-only-session-secret-never-use-in-production-2026',
+};
+const emailConfig = {
+  ownerEmail: 'oliphantremoval@gmail.com',
+  sessionSecret: 'test-only-email-session-secret-never-use-in-production-2026',
 };
 const now = 1_800_000_000;
 
@@ -132,3 +142,36 @@ test('invalid configuration and issue times cannot create authenticated sessions
     assert.equal(verifySession(createSession(config, now), config, invalidTime), false);
   }
 });
+
+test('email owner configuration requires a valid email and a separate session secret', () => {
+  assert.equal(getEmailAuthConfig({}), null);
+  assert.equal(getEmailAuthConfig({ CRM_OWNER_EMAIL: emailConfig.ownerEmail }), null);
+  assert.equal(getEmailAuthConfig({ CRM_OWNER_EMAIL: 'not-an-email', CRM_SESSION_SECRET: emailConfig.sessionSecret }), null);
+  assert.equal(getEmailAuthConfig({ CRM_OWNER_EMAIL: 'a'.repeat(250) + '@x.com', CRM_SESSION_SECRET: emailConfig.sessionSecret }), null);
+  assert.deepEqual(
+    getEmailAuthConfig({ CRM_OWNER_EMAIL: '  OLIPHANTREMOVAL@GMAIL.COM  ', CRM_SESSION_SECRET: emailConfig.sessionSecret }),
+    emailConfig,
+  );
+});
+
+test('email sessions and owner sign-in links are short-lived, signed, and mutually isolated from password sessions', () => {
+  const emailSession = createEmailSession(emailConfig, now);
+  const loginLink = createOwnerLoginLink(emailConfig, now);
+  const passwordSession = createSession(config, now);
+  const linkClaims = JSON.parse(Buffer.from(loginLink.split('.')[0], 'base64url').toString());
+
+  assert.equal(OWNER_LOGIN_LINK_MAX_AGE_SECONDS, 900);
+  assert.equal(verifyEmailSession(emailSession, emailConfig, now), true);
+  assert.equal(verifyEmailSession(emailSession, emailConfig, now + SESSION_MAX_AGE_SECONDS), false);
+  assert.equal(verifyOwnerLoginLink(loginLink, emailConfig, now), true);
+  assert.equal(verifyOwnerLoginLink(loginLink, emailConfig, now + OWNER_LOGIN_LINK_MAX_AGE_SECONDS), false);
+  assert.equal(verifyOwnerLoginLink(loginLink.slice(0, -1) + (loginLink.at(-1) === 'A' ? 'B' : 'A'), emailConfig, now), false);
+  assert.equal(verifyEmailSession(passwordSession, emailConfig, now), false);
+  assert.equal(verifySession(emailSession, config, now), false);
+  assert.equal(verifyOwnerLoginLink(loginLink, { ...emailConfig, ownerEmail: 'new-owner@example.com' }, now), false);
+  assert.equal(verifyOwnerLoginLink(loginLink, { ...emailConfig, sessionSecret: 'rotated-email-session-secret-never-use-in-production-2026' }, now), false);
+  assert.deepEqual(Object.keys(linkClaims).sort(), ['exp', 'iat', 'nonce', 'purpose', 'version']);
+  assert.ok(!JSON.stringify(linkClaims).includes(emailConfig.ownerEmail));
+  assert.ok(!JSON.stringify(linkClaims).includes(emailConfig.sessionSecret));
+});
+
