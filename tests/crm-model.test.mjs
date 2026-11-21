@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createDemoState, createEmptyState, validateImport } from '../app/crm/model.ts';
+import { createDefaultSettings, createDemoState, createEmptyState, validateImport } from '../app/crm/model.ts';
 
 // A deterministic, realistic backup: tests do not depend on the demo's current date.
 function backup() {
@@ -41,16 +41,19 @@ function backup() {
 test('a customer/job/task backup survives JSON export and import with decimal estimates intact', () => {
   const original = backup();
   const restored = validateImport(JSON.parse(JSON.stringify(original)));
-  assert.deepEqual(restored, original);
+  assert.equal(restored.version, 2);
+  assert.equal(restored.demo, original.demo);
+  assert.deepEqual(restored.customers, original.customers);
+  assert.deepEqual(restored.jobs, original.jobs);
+  assert.deepEqual(restored.tasks, original.tasks);
+  assert.deepEqual(restored.settings, createDefaultSettings());
   assert.equal(restored.jobs[0].amount, 1250.75);
   assert.notEqual(restored, original);
   assert.notEqual(restored.customers[0], original.customers[0]);
 });
 
-test('empty and fictional demo workspaces can both be restored', () => {
-  assert.deepEqual(validateImport(createEmptyState()), {
-    version: 1, customers: [], jobs: [], tasks: [], demo: false,
-  });
+test('v1 backups migrate to v2 settings and empty/demo workspaces can be restored', () => {
+  assert.deepEqual(validateImport(createEmptyState()), createEmptyState());
   const demo = createDemoState();
   assert.equal(demo.demo, true);
   assert.ok(demo.jobs.length > 0);
@@ -65,14 +68,49 @@ test('unknown fields are discarded at every record level', () => {
   input.customers[0].admin = true;
   input.jobs[0].externalWebhook = 'https://example.com';
   input.tasks[0].unexpected = 'discard me';
-  assert.deepEqual(validateImport(input), original);
+  assert.deepEqual(validateImport(input), validateImport(original));
 });
 
 test('malformed backup envelopes and records are rejected', () => {
-  const malformed = [null, [], {}, { ...backup(), version: 2 },
+  const malformed = [null, [], {}, { ...backup(), version: 3 }, { ...backup(), version: 2 },
     { ...backup(), demo: 'false' }, { ...backup(), customers: {} },
     { ...backup(), jobs: [null] }, { ...backup(), tasks: [{ ...backup().tasks[0], done: 'false' }] }];
   for (const input of malformed) assert.throws(() => validateImport(input), Error);
+});
+
+test('v2 settings are restored, unknown settings fields are discarded, and historical services remain valid', () => {
+  const current = validateImport(backup());
+  current.settings.profile.ownerName = 'Aiden O.';
+  current.settings.business.serviceArea = 'Lapeer and Genesee counties';
+  current.settings.services = ['Tree removal', 'Stump grinding'];
+  current.jobs[0].service = 'Storm cleanup';
+
+  const input = JSON.parse(JSON.stringify(current));
+  input.settings.untrusted = true;
+  input.settings.profile.admin = true;
+  input.settings.billing.processorToken = 'never-copy-this';
+  const restored = validateImport(input);
+
+  assert.equal(restored.settings.profile.ownerName, 'Aiden O.');
+  assert.deepEqual(restored.settings.services, ['Tree removal', 'Stump grinding']);
+  assert.equal(restored.jobs[0].service, 'Storm cleanup');
+  assert.equal('untrusted' in restored.settings, false);
+  assert.equal('admin' in restored.settings.profile, false);
+  assert.equal('processorToken' in restored.settings.billing, false);
+});
+
+test('invalid settings are rejected', () => {
+  const missingServices = validateImport(backup());
+  missingServices.settings.services = [];
+  assert.throws(() => validateImport(missingServices), /Services must contain/);
+
+  const duplicateServices = validateImport(backup());
+  duplicateServices.settings.services = ['Tree removal', 'tree removal'];
+  assert.throws(() => validateImport(duplicateServices), /Services cannot contain duplicates/);
+
+  const invalidTimezone = validateImport(backup());
+  invalidTimezone.settings.business.timezone = 'Lapeer/Time';
+  assert.throws(() => validateImport(invalidTimezone), /valid IANA timezone/);
 });
 
 test('a job cannot refer to a missing customer', () => {
@@ -138,3 +176,4 @@ test('unknown stages, unsafe IDs, and invalid contact details are rejected', () 
   name.customers[0].name = '   ';
   assert.throws(() => validateImport(name), /cannot be empty/);
 });
+
