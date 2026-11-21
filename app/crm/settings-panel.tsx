@@ -2,10 +2,11 @@
 
 import { useId, useState, type FormEvent } from "react";
 import { initials, priorities, type CRMSettings, type CRMState } from "./model";
+import WebsiteSettingsPanel from "./website-settings-panel";
 
-type SettingsTab = "Profile" | "Business" | "Services" | "Work defaults" | "Notifications" | "Billing" | "Data";
+type SettingsTab = "Profile" | "Business" | "Website" | "Services" | "Work defaults" | "Notifications" | "Billing" | "Data";
 
-const tabs: SettingsTab[] = ["Profile", "Business", "Services", "Work defaults", "Notifications", "Billing", "Data"];
+const tabs: SettingsTab[] = ["Profile", "Business", "Website", "Services", "Work defaults", "Notifications", "Billing", "Data"];
 
 type SettingsPanelProps = {
   data: CRMState;
@@ -165,6 +166,8 @@ export default function SettingsPanel({ data, onClear, onExport, onImport, onSav
         </div>
         <div className="crm-settings-actions"><button className="crm-button is-primary" type="submit">Save business profile</button></div>
       </form>}
+
+      {tab === "Website" && <WebsiteSettingsPanel />}
 
       {tab === "Services" && <div className="crm-settings-form">
         <div className="crm-panel-heading"><div><h2>Service catalog</h2><p>Choose the services available when you create a lead or job.</p></div></div>
