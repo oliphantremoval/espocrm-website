@@ -1,7 +1,7 @@
 'use client';
 
 import { useSyncExternalStore } from 'react';
-import { createDemoState, createEmptyState, validateImport, type CRMState } from './model';
+import { createEmptyState, validateImport, type CRMState } from './model';
 
 export const CRM_STORAGE_KEY = 'oliphant-removal-crm-v1';
 const MAX_BACKUP_BYTES = 5_000_000;
@@ -50,7 +50,7 @@ function initialize() {
       return;
     }
 
-    const state = createDemoState();
+    const state = createEmptyState();
     const serialized = JSON.stringify(state);
     window.localStorage.setItem(CRM_STORAGE_KEY, serialized);
     lastStoredRaw = serialized;
@@ -64,7 +64,7 @@ function initialize() {
       });
     } else {
       publish({
-        state: createDemoState(),
+        state: createEmptyState(),
         error: 'Browser storage is unavailable or full. Changes cannot be saved. Enable browser storage or free some space, then try again.',
       });
     }
@@ -164,3 +164,4 @@ export function useCrmStore(): {
   const current = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   return { ...current, save };
 }
+
