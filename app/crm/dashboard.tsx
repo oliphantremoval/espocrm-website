@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { cloneElement, useEffect, useId, useRef, useState, type FormEvent, type ReactElement, type ReactNode } from "react";
 import SettingsPanel from "./settings-panel";
+import WebsiteLeadsPanel, { type WebsiteLead } from "./website-leads-panel";
 import { createEmptyState, initials, money, priorities, stages, validateImport, type CRMState, type Customer, type Job } from "./model";
 import { useCrmStore } from "./use-crm-store";
 
@@ -77,6 +78,54 @@ export default function Dashboard() {
     try { if (file.size > 5_000_000) throw new Error("Choose a backup smaller than 5 MB."); const next = validateImport(JSON.parse(await file.text())); if (confirm(`Replace this workspace with ${next.customers.length} customers and ${next.jobs.length} jobs from the backup?`)) persist(next, "Workspace restored from backup."); } catch (e) { setToast(e instanceof Error ? e.message : "This file is not a valid workspace backup."); }
   }
   function changeStage(job: Job, stage: Job["stage"]) { persist({ ...data, jobs: data.jobs.map(j => j.id === job.id ? { ...j, stage } : j) }, `${job.title} marked ${stage.toLowerCase()}.`); }
+  function createWebsiteLead(lead: WebsiteLead) {
+    const sourceMarker = `[website-lead:${lead.id}]`;
+    const existingJob = data.jobs.find((job) => job.notes.includes(sourceMarker));
+    if (existingJob) {
+      setJobModal(existingJob);
+      setToast("That website request is already in your local workspace.");
+      return;
+    }
+    const email = lead.email.trim().toLowerCase();
+    const phone = lead.phone.replace(/\D/g, "");
+    const existingCustomer = data.customers.find((customer) => (
+      (email && customer.email.trim().toLowerCase() === email)
+      || (phone && customer.phone.replace(/\D/g, "") === phone)
+    ));
+    const customer: Customer | undefined = existingCustomer ? undefined : {
+      id: id(),
+      name: lead.name,
+      email: lead.email,
+      phone: lead.phone,
+      address: lead.company,
+      notes: `${sourceMarker}\nImported from the website lead inbox.`,
+    };
+    const job: Job = {
+      id: id(),
+      customerId: existingCustomer?.id ?? customer!.id,
+      title: `${lead.name} website request`.slice(0, 300),
+      service: data.settings.services[0] ?? "Tree removal",
+      stage: "New lead",
+      priority: data.settings.jobDefaults.priority,
+      amount: 0,
+      scheduledDate: "",
+      scheduledTime: data.settings.jobDefaults.arrivalTime,
+      crew: data.settings.jobDefaults.crew,
+      notes: [
+        sourceMarker,
+        lead.createdAt && `Website request received: ${lead.createdAt}`,
+        lead.company && `Address or company: ${lead.company}`,
+        lead.description && `Message:\n${lead.description}`,
+      ].filter(Boolean).join("\n\n").slice(0, 5_000),
+      createdAt: new Date().toISOString(),
+    };
+    const next: CRMState = {
+      ...data,
+      customers: customer ? [...data.customers, customer] : data.customers,
+      jobs: [job, ...data.jobs],
+    };
+    if (persist(next, "Website request added. Confirm the details and service.")) setJobModal(job);
+  }
 
   function jobTable(jobs: Job[], compact = false) {
     if (!jobs.length) return <Empty title={query || stageFilter !== "All stages" ? "No matching jobs" : "Your next job starts here"} detail={query ? "Try another customer, service, or address." : "Add a lead or job to keep the work moving."} />;
@@ -116,6 +165,7 @@ export default function Dashboard() {
           <div className="crm-stat-grid">{[{ label: "Active jobs", value: String(active.length).padStart(2, "0"), sub: `${data.jobs.filter(j => j.stage === "New lead").length} new leads to follow up`, icon: "briefcase" as const }, { label: "Pipeline value", value: money(pipeline), sub: "Estimates across active jobs", icon: "quote" as const }, { label: "On the schedule today", value: String(todayJobs.length).padStart(2, "0"), sub: "Booked and in-progress work", icon: "calendar" as const }, { label: "Completed job value", value: money(completed.reduce((sum, j) => sum + j.amount, 0)), sub: `${completed.length} completed ${completed.length === 1 ? "job" : "jobs"} · before expenses`, icon: "money" as const }].map((stat, i) => <article className={`crm-stat-card crm-stat-${i}`} key={stat.label}><div><p>{stat.label}</p><span className="crm-stat-icon"><Icon name={stat.icon} /></span></div><strong>{stat.value}</strong><small>{stat.sub}</small></article>)}</div>
           <div className="crm-overview-grid"><section className="crm-panel crm-active-panel"><div className="crm-panel-heading"><div><h2>Work in motion <span className="crm-count">{active.length}</span></h2><p>A little progress on every project.</p></div><button className="crm-text-button crm-green" onClick={() => go("Leads & jobs")}>View all jobs <Icon name="arrow" /></button></div>{jobTable(active.slice(0, 5), true)}</section><section className="crm-panel crm-today-panel"><div className="crm-panel-heading"><div><h2>Today’s schedule</h2><p>{displayDate(today(), { weekday: "long", month: "long", day: "numeric" })}</p></div><span className="crm-count">{todayJobs.length}</span></div><div className="crm-schedule-list">{todayJobs.length ? todayJobs.map(scheduleCard) : <Empty title="A little room in the day" detail="Scheduled jobs for today will appear here." />}</div><button className="crm-panel-link" onClick={() => go("Schedule")}>Open full schedule <Icon name="arrow" /></button></section>{taskPanel()}<section className="crm-panel"><div className="crm-panel-heading"><div><h2>Your service mix</h2><p>Where the work is coming from</p></div><Icon name="leaf" /></div><div className="crm-service-list">{availableServices.map((service, index) => { const count = data.jobs.filter(j => j.service === service).length; return <div className="crm-service-row" key={service}><div><span><span className={`crm-service-dot crm-service-${index}`} />{service}</span><strong>{count}</strong></div><div className="crm-progress"><span style={{ width: `${data.jobs.length ? count / data.jobs.length * 100 : 0}%` }} /></div></div>; })}</div><div className="crm-service-total"><span>Total jobs in workspace</span><strong>{data.jobs.length}</strong></div></section></div>
         </>}
+        {view === "Leads & jobs" && <WebsiteLeadsPanel onCreateLocalLead={createWebsiteLead} />}
         {(view === "Leads & jobs" || view === "Estimates") && <section className="crm-panel"><div className="crm-toolbar"><div><h2>{view === "Estimates" ? "Requests & estimates" : "All leads & jobs"} <span className="crm-count">{view === "Estimates" ? estimateJobs.length : filteredJobs.length}</span></h2><p className="crm-muted">Select a job to view details and update its progress.</p></div><label className="crm-filter"><span className="crm-sr-only">Filter by stage</span><select value={stageFilter} onChange={event => setStageFilter(event.target.value)}><option>All stages</option>{(view === "Estimates" ? stages.filter(s => ["New lead", "Estimate sent"].includes(s)) : stages).map(stage => <option key={stage}>{stage}</option>)}</select></label></div>{jobTable(view === "Estimates" ? estimateJobs : filteredJobs)}</section>}
         {view === "Customers" && <section className="crm-panel"><div className="crm-toolbar"><div><h2>Your customers <span className="crm-count">{filteredCustomers.length}</span></h2><p className="crm-muted">One place for the details that matter.</p></div><button className="crm-button is-secondary" onClick={() => setCustomerModal("new")}><Icon name="plus" />Add customer</button></div>{filteredCustomers.length ? <div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Customer</th><th>Contact</th><th>Property address</th><th>Jobs</th><th><span className="crm-sr-only">Edit customer</span></th></tr></thead><tbody>{filteredCustomers.map(customer => <tr key={customer.id}><td><button className="crm-person crm-text-button" onClick={() => setCustomerModal(customer)}><span className="crm-avatar">{initials(customer.name)}</span><strong>{customer.name}</strong></button></td><td><div>{customer.email ? <a href={`mailto:${customer.email}`}>{customer.email}</a> : "No email"}</div><div className="crm-muted">{customer.phone ? <a href={`tel:${customer.phone}`}>{customer.phone}</a> : "No phone"}</div></td><td className="crm-muted">{customer.address || "Not provided"}</td><td>{data.jobs.filter(j => j.customerId === customer.id).length}</td><td><button className="crm-icon-button" aria-label={`Edit customer ${customer.name}`} onClick={() => setCustomerModal(customer)}><Icon name="arrow" /></button></td></tr>)}</tbody></table></div> : <Empty title="Make your first connection" detail="Add a customer to keep their contact and property details close." />}</section>}
         {view === "Schedule" && <div className="crm-schedule-page">{(() => { const jobs = filteredJobs.filter(j => !["Completed", "Lost"].includes(j.stage)); const dates = [...new Set(jobs.map(j => j.scheduledDate))].sort((a, b) => (a || "9999").localeCompare(b || "9999")); return dates.length ? dates.map(date => <section className="crm-panel" key={date || "unscheduled"}><div className="crm-panel-heading"><div><h2>{date ? displayDate(date, { weekday: "long", month: "long", day: "numeric" }) : "Ready to schedule"}{date === today() && <span className="crm-count">Today</span>}</h2><p>{date ? date < today() ? "Past schedule · review these jobs" : "Your plan for the day" : "Add a date to book these jobs"}</p></div><Icon name="calendar" /></div><div className="crm-schedule-list">{jobs.filter(j => j.scheduledDate === date).sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime)).map(scheduleCard)}</div></section>) : <section className="crm-panel"><Empty title="Your schedule is clear" detail="New and scheduled jobs will appear here." /></section>; })()}</div>}
