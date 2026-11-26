@@ -11,7 +11,15 @@ export async function GET(request: Request) {
   if (tokens.length !== 1 || !validToken(tokens[0])) return invalid(request);
   // The token alphabet is restricted to base64url, so it is safe in this hidden field.
   const html = `<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Confirm sign-in | Oliphant Removal</title></head><body style="font-family:Arial,sans-serif;background:#f4f7f1;color:#233e2e;padding:12vh 20px"><main style="max-width:420px;margin:auto;background:white;padding:32px;border-radius:12px"><h1>Confirm your sign-in</h1><p>Continue to your Oliphant Removal customer portal.</p><form method="post" action="/api/portal/auth/verify"><input type="hidden" name="token" value="${tokens[0]}"><button style="background:#285d45;color:white;border:0;border-radius:6px;padding:14px 20px;font-size:16px" type="submit">Continue securely</button></form></main></body></html>`;
-  return new NextResponse(html, { headers: { ...portalHeaders, "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'" } });
+  return new NextResponse(html, {
+    headers: {
+      ...portalHeaders,
+      // Keep the token out of the referrer while allowing the form to send its origin.
+      "Referrer-Policy": "strict-origin",
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+    },
+  });
 }
 
 export async function POST(request: Request) {

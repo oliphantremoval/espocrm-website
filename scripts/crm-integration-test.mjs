@@ -284,6 +284,7 @@ try {
       const ownerContext = await browser.newContext();
       await ownerContext.addCookies([{ name: 'oliphant-crm-session', value: ownerCookie.split('=')[1], url: base }]);
       const ownerPage = await ownerContext.newPage();
+      ownerPage.setDefaultTimeout(10_000);
       await ownerPage.goto(base + '/crm');
       await ownerPage.getByRole('navigation', { name: 'CRM navigation' }).getByRole('button', { name: 'Settings', exact: true }).click();
       await ownerPage.getByRole('tab', { name: 'Team', exact: true }).click();
@@ -293,7 +294,7 @@ try {
       const addForm = ownerPage.locator('form').filter({ has: ownerPage.getByRole('button', { name: 'Add team member' }) });
       await addForm.getByLabel('Full name').fill('Browser Test Co-owner');
       await addForm.getByLabel('Work email').fill(browserInviteEmail);
-      await addForm.getByLabel('Role', { exact: true }).selectOption('co-owner');
+      await addForm.getByRole('combobox').selectOption('co-owner');
       await addForm.getByRole('button', { name: 'Add team member' }).click();
       await ownerPage.getByText(browserInviteEmail, { exact: true }).waitFor();
       await ownerPage.getByRole('button', { name: 'Send invitation to Browser Test Co-owner' }).click();
@@ -301,6 +302,7 @@ try {
       await ownerContext.close();
 
       const managerPage = await browser.newPage();
+      managerPage.setDefaultTimeout(10_000);
       const managerBrowserToken = await requestToken(managerEmail, 2);
       await managerPage.goto(base + teamVerifyPath + '?token=' + managerBrowserToken);
       await managerPage.getByRole('button', { name: 'Sign in to the CRM' }).click();
@@ -310,6 +312,48 @@ try {
       await managerPage.getByText('Test Customer', { exact: true }).waitFor();
       assert.equal(await managerNav.getByRole('button', { name: 'Settings', exact: true }).count(), 0);
       console.log('PASS: create and invite a co-owner from Settings, native email confirmation, and manager workspace access in Chrome.');
+
+      const portalEmail = 'portal-browser-test@example.invalid';
+      const customersPath = '/api/crm/portal/customers';
+      const { customer } = await (await expectStatus(customersPath, 201, {
+        method: 'POST', cookie: ownerCookie, json: { name: 'Portal Test Customer', email: portalEmail, phone: '', address: '' },
+      })).json();
+      await expectStatus(customersPath + '/' + customer.id, 200, {
+        method: 'PATCH', cookie: ownerCookie, json: { enabled: true },
+      });
+      await expectStatus(customersPath + '/' + customer.id + '/jobs', 201, {
+        method: 'POST', cookie: ownerCookie, json: {
+          title: 'Portal browser test project', service: 'Tree removal', status: 'Scheduled',
+          scheduledDate: '2026-12-03', scheduledTime: '09:00', description: 'Customer-visible project details',
+        },
+      });
+
+      const portalVerifyPath = '/api/portal/auth/verify';
+      const portalPage = await browser.newPage();
+      portalPage.setDefaultTimeout(10_000);
+      await portalPage.goto(base + '/portal/login');
+      await portalPage.getByLabel('Email address').fill(portalEmail);
+      await portalPage.getByRole('button', { name: 'Email me a sign-in link' }).click();
+      await portalPage.getByRole('status').getByText('If your email has access', { exact: false }).waitFor();
+      const [, portalToken] = await waitForMail(portalEmail, /\/api\/portal\/auth\/verify\?token=([A-Za-z0-9_-]{43})/);
+      await expectStatus(portalVerifyPath, 403, {
+        method: 'POST', origin: 'https://unrelated.example.invalid', form: { token: portalToken },
+      });
+
+      await portalPage.goto(base + portalVerifyPath + '?token=' + portalToken);
+      const [confirmed] = await Promise.all([
+        portalPage.waitForResponse((response) => response.url() === base + portalVerifyPath && response.request().method() === 'POST'),
+        portalPage.getByRole('button', { name: 'Continue securely' }).click(),
+      ]);
+      const confirmationHeaders = await confirmed.request().allHeaders();
+      assert.equal(confirmed.status(), 303, 'The native customer confirmation form must redirect to the portal.');
+      assert.equal(confirmationHeaders.origin, base, 'The native confirmation sends its same-origin Origin header.');
+      assert.ok(!confirmationHeaders.referer?.includes(portalToken), 'The confirmation Referer never includes the sign-in token.');
+      await portalPage.waitForURL(base + '/portal');
+      await portalPage.getByRole('heading', { name: 'Portal browser test project' }).waitFor();
+      const replay = await expectStatus(portalVerifyPath, 303, { method: 'POST', form: { token: portalToken } });
+      assert.match(replay.headers.get('location') ?? '', /error=link/, 'A used customer sign-in link cannot be replayed.');
+      console.log('PASS: customer email sign-in and native confirmation open the portal without exposing the sign-in token.');
     } finally {
       await browser.close();
     }
@@ -326,3 +370,4 @@ try {
   }
   await database.close();
 }
+
