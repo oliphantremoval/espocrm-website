@@ -2,18 +2,20 @@
 
 import { useId, useState, type FormEvent } from "react";
 import { initials, priorities, type CRMSettings, type CRMState } from "./model";
+import TeamSettingsPanel from "./team-settings-panel";
 import WebsiteSettingsPanel from "./website-settings-panel";
 
-type SettingsTab = "Profile" | "Business" | "Website" | "Services" | "Work defaults" | "Notifications" | "Billing" | "Data";
-
-const tabs: SettingsTab[] = ["Profile", "Business", "Website", "Services", "Work defaults", "Notifications", "Billing", "Data"];
+const tabs = ["Profile", "Team", "Business", "Website", "Services", "Work defaults", "Notifications", "Billing", "Data"] as const;
+type SettingsTab = (typeof tabs)[number];
 
 type SettingsPanelProps = {
   data: CRMState;
+  role: "primary" | "co-owner";
+  shared: boolean;
   onClear: () => void;
   onExport: () => void;
   onImport: () => void;
-  onSave: (settings: CRMSettings, message: string) => boolean;
+  onSave: (settings: CRMSettings, message: string) => Promise<boolean>;
 };
 
 function readText(form: HTMLFormElement, name: string): string {
@@ -24,8 +26,9 @@ function Toggle({ checked, description, label, onChange }: { checked: boolean; d
   return <label className="crm-setting-toggle"><span><strong>{label}</strong><small>{description}</small></span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /></label>;
 }
 
-export default function SettingsPanel({ data, onClear, onExport, onImport, onSave }: SettingsPanelProps) {
-  const [tab, setTab] = useState<SettingsTab>("Profile");
+export default function SettingsPanel({ data, role, shared, onClear, onExport, onImport, onSave }: SettingsPanelProps) {
+  const isPrimary = role === "primary";
+  const [tab, setTab] = useState<SettingsTab>(isPrimary ? "Profile" : "Business");
   const [newService, setNewService] = useState("");
   const [serviceError, setServiceError] = useState("");
   const tabId = useId();
@@ -94,7 +97,7 @@ export default function SettingsPanel({ data, onClear, onExport, onImport, onSav
     }, "Billing preferences saved.");
   }
 
-  function addService(event: FormEvent<HTMLFormElement>) {
+  async function addService(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const value = newService.trim().replace(/\s+/g, " ");
     if (value.length < 2 || value.length > 80) {
@@ -105,18 +108,18 @@ export default function SettingsPanel({ data, onClear, onExport, onImport, onSav
       setServiceError("That service is already in your list.");
       return;
     }
-    if (update({ ...settings, services: [...settings.services, value] }, `${value} added to services.`)) {
+    if (await update({ ...settings, services: [...settings.services, value] }, `${value} added to services.`)) {
       setNewService("");
       setServiceError("");
     }
   }
 
-  function removeService(service: string) {
+  async function removeService(service: string) {
     if (settings.services.length === 1) {
       setServiceError("Keep at least one active service.");
       return;
     }
-    if (update({ ...settings, services: settings.services.filter((item) => item !== service) }, `${service} removed from active services.`)) {
+    if (await update({ ...settings, services: settings.services.filter((item) => item !== service) }, `${service} removed from active services.`)) {
       setServiceError("");
     }
   }
@@ -136,12 +139,16 @@ export default function SettingsPanel({ data, onClear, onExport, onImport, onSav
         <div><strong>{settings.profile.ownerName}</strong><small>{settings.profile.title}</small></div>
       </div>
       <div className="crm-settings-tabs" role="tablist" aria-label="Settings sections">
-        {tabs.map((item) => <button key={item} id={`${tabId}-${item}`} type="button" role="tab" aria-selected={tab === item} aria-controls={`${tabId}-${item}-panel`} className="crm-settings-tab" onClick={() => setTab(item)}>{item}</button>)}
+        {tabs.filter((item) => isPrimary || (item !== "Profile" && item !== "Data")).map((item) => {
+          const id = `${tabId}-${item.replaceAll(" ", "-")}`;
+          return <button key={item} id={id} type="button" role="tab" aria-selected={tab === item} aria-controls={tab === item ? `${id}-panel` : undefined} className="crm-settings-tab" onClick={() => setTab(item)}>{item}</button>;
+        })}
       </div>
     </aside>
 
-    <section id={`${tabId}-${tab}-panel`} role="tabpanel" aria-labelledby={`${tabId}-${tab}`} className="crm-panel crm-settings-content">
-      {tab === "Profile" && <form className="crm-settings-form" onSubmit={saveProfile}>
+    <section id={`${tabId}-${tab.replaceAll(" ", "-")}-panel`} role="tabpanel" aria-labelledby={`${tabId}-${tab.replaceAll(" ", "-")}`} className="crm-panel crm-settings-content">
+      {tab === "Team" && <TeamSettingsPanel role={role} />}
+      {tab === "Profile" && isPrimary && <form className="crm-settings-form" onSubmit={saveProfile}>
         <div className="crm-panel-heading"><div><h2>Owner profile</h2><p>Update the contact information shown inside your workspace.</p></div></div>
         <div className="crm-form-grid">
           <label className="crm-field"><span>Full name</span><input name="ownerName" required maxLength={200} defaultValue={settings.profile.ownerName} /></label>
@@ -223,16 +230,15 @@ export default function SettingsPanel({ data, onClear, onExport, onImport, onSav
         <div className="crm-settings-actions"><button className="crm-button is-primary" type="submit">Save billing preferences</button></div>
       </form>}
 
-      {tab === "Data" && <div className="crm-settings-form">
-        <div className="crm-panel-heading"><div><h2>Data and security</h2><p>Keep a private backup while shared CRM storage is being connected.</p></div></div>
+      {tab === "Data" && isPrimary && <div className="crm-settings-form">
+        <div className="crm-panel-heading"><div><h2>Data and security</h2><p>Back up or restore your {shared ? "shared" : "browser"} workspace.</p></div></div>
         <div className="crm-data-actions">
-          <article><h3>Export backup</h3><p>Download all local workspace data and settings as a private JSON file.</p><button className="crm-button is-secondary" type="button" onClick={onExport}>Export backup</button></article>
-          <article><h3>Import backup</h3><p>Restore a validated CRM backup from this browser.</p><button className="crm-button is-secondary" type="button" onClick={onImport}>Import backup</button></article>
-          <article className="is-danger"><h3>Clear local workspace</h3><p>Remove customers, jobs, tasks, and local settings from this browser after exporting a backup.</p><button className="crm-button is-danger" type="button" onClick={onClear}>Clear workspace</button></article>
+          <article><h3>Export backup</h3><p>Download the current workspace records and settings as a JSON file.</p><button className="crm-button is-secondary" type="button" onClick={onExport}>Export backup</button></article>
+          <article><h3>Import backup</h3><p>Replace the current workspace records and settings with a saved backup.</p><button className="crm-button is-secondary" type="button" onClick={onImport}>Import backup</button></article>
+          <article className="is-danger"><h3>Clear workspace</h3><p>Remove customers, jobs, tasks, and settings {shared ? "from the shared workspace for everyone" : "from this browser"}.</p><button className="crm-button is-danger" type="button" onClick={onClear}>Clear workspace</button></article>
         </div>
         <p className="crm-settings-note">Your owner sign-in remains protected on the server. This panel does not expose passwords, email links, or payment credentials.</p>
       </div>}
     </section>
   </div>;
 }
-

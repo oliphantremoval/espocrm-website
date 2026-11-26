@@ -219,7 +219,7 @@ export default function PortalManagement({ localCustomers, localJobs }: { localC
   return <div className="crm-schedule-page">
     <section className="crm-panel">
       <div className="crm-panel-heading"><div><h2>Customer portals</h2><p>Control access and choose the information each customer can see.</p></div><a className="crm-button is-secondary" href="/portal/login" target="_blank" rel="noreferrer">Customer sign-in</a><button className="crm-button is-secondary" type="button" onClick={() => setRefresh((count) => count + 1)} disabled={loading || working}>Refresh</button></div>
-      <p className="crm-settings-note" style={{ marginTop: 20 }}>You can copy customer and job details from this browser’s CRM below. Portal records are separate copies, so later CRM edits must also be updated here. Private CRM notes are never copied.</p>
+      <p className="crm-settings-note" style={{ marginTop: 20 }}>Copy customer and job details from the CRM below. Update the portal here when CRM details change. Private CRM notes stay in the CRM.</p>
       {error && <p className="crm-error" role="alert" style={{ margin: "0 22px 18px" }}>{error}</p>}
       {message && <p className="crm-success" role="status" style={{ marginBottom: 18 }}>{message}</p>}
       {loading ? <p className="crm-muted" style={{ padding: "0 22px 20px" }}>Loading customer portals…</p> : customers.length === 0 ? <p className="crm-muted" style={{ padding: "0 22px 20px" }}>No portal customers yet. Add one below.</p> : <div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Customer</th><th>Email</th><th>Access</th><th>Manage</th></tr></thead><tbody>{customers.map((customer) => <tr key={customer.id}><td><strong>{customer.name}</strong></td><td>{customer.email}</td><td>{customer.enabled ? "Enabled" : "Disabled"}</td><td><button type="button" className="crm-button is-small is-secondary" disabled={working} onClick={() => { setSelectedId(customer.id); setEditingJob(null); setEditingCustomer(false); setJobSource(""); setError(""); setMessage(""); }} aria-label={`Manage portal for ${customer.name}`}>Manage</button></td></tr>)}</tbody></table></div>}
@@ -259,4 +259,3 @@ export default function PortalManagement({ localCustomers, localJobs }: { localC
     </section>}
   </div>;
 }
-

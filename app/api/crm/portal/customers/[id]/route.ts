@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { isSameOrigin, ownerAuthConfig, ownerIsSignedIn, privateHeaders } from "@/lib/crm-auth";
+import { isSameOrigin, privateHeaders } from "@/lib/crm-auth";
+import { currentCrmActor } from "@/lib/crm-team-auth";
 import { emailAddress, field, portalCustomer, portalDb, record, uuid } from "@/lib/portal-db";
 import { readSmallBody } from "@/lib/portal-auth";
 
@@ -7,8 +8,7 @@ export const runtime = "nodejs";
 const json = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: privateHeaders });
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
-  const config = ownerAuthConfig();
-  if (!config || !(await ownerIsSignedIn(config))) return json({ error: "Unauthorized" }, 401);
+  if (!(await currentCrmActor())) return json({ error: "Unauthorized" }, 401);
   if (!isSameOrigin(request)) return json({ error: "Forbidden" }, 403);
   const { id } = await context.params;
   if (!uuid(id)) return json({ error: "Invalid customer." }, 400);
@@ -35,4 +35,3 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     return json({ error: "Could not update the customer. Check the details and try again." }, 400);
   }
 }
-

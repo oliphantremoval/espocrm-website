@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { ownerAuthConfig, ownerIsSignedIn, privateHeaders } from "@/lib/crm-auth";
+import { privateHeaders } from "@/lib/crm-auth";
+import { currentCrmActor } from "@/lib/crm-team-auth";
 
 export const runtime = "nodejs";
 
@@ -38,8 +39,7 @@ function response(payload: unknown, status = 200) {
 }
 
 export async function GET() {
-  const config = ownerAuthConfig();
-  if (!config || !(await ownerIsSignedIn(config))) {
+  if (!(await currentCrmActor())) {
     return new NextResponse("Unauthorized", { status: 401, headers: privateHeaders });
   }
 
@@ -92,4 +92,3 @@ export async function GET() {
     return response({ error: "Website lead syncing is unavailable right now." }, 503);
   }
 }
-

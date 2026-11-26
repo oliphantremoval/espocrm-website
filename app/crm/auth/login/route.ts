@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSession, SESSION_MAX_AGE_SECONDS, verifyOwnerPassword } from "@/lib/crm-auth-core";
 import { isSameOrigin, ownerAuthConfig, privateHeaders, sessionCookieName, sessionCookieOptions } from "@/lib/crm-auth";
+import { clearTeamSession } from "@/lib/crm-team-auth";
 
 export const runtime = "nodejs";
 
@@ -69,9 +70,9 @@ export async function POST(request: Request) {
       ...sessionCookieOptions(),
       maxAge: SESSION_MAX_AGE_SECONDS,
     });
+    await clearTeamSession(response);
     return response;
   } catch {
     return new NextResponse("Sign-in could not be completed. Please try again later.", { status: 503, headers: privateHeaders });
   }
 }
-

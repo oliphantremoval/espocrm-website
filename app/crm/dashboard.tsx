@@ -3,11 +3,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { cloneElement, useEffect, useId, useRef, useState, type FormEvent, type ReactElement, type ReactNode } from "react";
+import type { CrmActor } from "@/lib/crm-team-auth";
 import SettingsPanel from "./settings-panel";
 import PortalManagement from "./portal-management";
 import WebsiteLeadsPanel, { type WebsiteLead } from "./website-leads-panel";
 import { createEmptyState, initials, money, priorities, stages, validateImport, type CRMState, type Customer, type Job } from "./model";
 import { useCrmStore } from "./use-crm-store";
+import { useSharedCrmStore } from "./use-shared-crm-store";
 
 type View = "Overview" | "Leads & jobs" | "Customers" | "Customer portals" | "Estimates" | "Schedule" | "Tasks" | "Settings";
 type IconName = "grid" | "briefcase" | "users" | "quote" | "calendar" | "check" | "plus" | "search" | "arrow" | "download" | "upload" | "trash" | "close" | "leaf" | "clock" | "money" | "menu" | "settings";
@@ -40,8 +42,14 @@ function Badge({ job }: { job: Job }) { return <span className={`crm-badge ${sta
 function Empty({ title, detail }: { title: string; detail: string }) { return <div className="crm-empty"><Icon name="leaf" /><h3>{title}</h3><p>{detail}</p></div>; }
 function id() { return crypto.randomUUID(); }
 
-export default function Dashboard() {
-  const { state, save, error } = useCrmStore();
+export default function Dashboard({ actor }: { actor: Pick<CrmActor, "name" | "role"> }) {
+  const shared = useSharedCrmStore();
+  const isPrimary = actor.role === "primary";
+  const canManageSettings = actor.role !== "manager";
+  const localMode = isPrimary && shared.loaded && !shared.sessionExpired && !shared.state;
+  const local = useCrmStore(localMode);
+  const state = shared.state ?? local.state;
+  const error = shared.error ?? local.error;
   const [view, setView] = useState<View>("Overview");
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("All stages");
@@ -49,12 +57,27 @@ export default function Dashboard() {
   const [customerModal, setCustomerModal] = useState<Customer | "new" | null>(null);
   const [toast, setToast] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
+  const [settingsVersion, setSettingsVersion] = useState(0);
+  const [activating, setActivating] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { if (!toast) return; const timeout = setTimeout(() => setToast(""), 5500); return () => clearTimeout(timeout); }, [toast]);
 
-  if (!state) return <main className="crm-loading"><Icon name="leaf" /><h1>Opening your workspace…</h1>{error && <p role="alert">{error}</p>}</main>;
+  if (!state) {
+    return <main className="crm-shell crm-access-screen"><div className="crm-panel crm-access-card">
+      <Icon name="leaf" />
+      <h1>{shared.sessionExpired ? "Sign in again" : error ? "Couldn’t open the workspace" : shared.loading || localMode ? "Opening your workspace…" : "Your workspace is almost ready"}</h1>
+      {error && <p role="alert">{error}</p>}
+      {!error && shared.loaded && !localMode && <p>Ask the main owner to turn on the shared workspace from their CRM.</p>}
+      {!shared.loading && <div className="crm-access-actions">
+        {shared.sessionExpired ? <Link className="crm-button is-primary" href="/crm/login">Go to sign-in</Link> : <button type="button" className="crm-button is-primary" onClick={() => void shared.reload()}>Try again</button>}
+        <form action="/crm/auth/logout" method="post"><button type="submit" className="crm-button is-secondary">Sign out</button></form>
+      </div>}
+    </div></main>;
+  }
   const data = state;
+  const displayName = isPrimary ? data.settings.profile.ownerName : actor.name;
+  const displayRole = isPrimary ? "Main owner" : actor.role === "co-owner" ? "Co-owner" : "Manager";
   const availableServices = Array.from(new Set([...data.settings.services, ...data.jobs.map((job) => job.service)]));
   const active = data.jobs.filter(j => !["Completed", "Lost"].includes(j.stage));
   const pipeline = active.reduce((sum, j) => sum + j.amount, 0);
@@ -67,24 +90,72 @@ export default function Dashboard() {
   const filteredCustomers = data.customers.filter(c => `${c.name} ${c.email} ${c.phone} ${c.address}`.toLowerCase().includes(query));
   const estimateJobs = filteredJobs.filter(j => ["New lead", "Estimate sent"].includes(j.stage));
 
-  function persist(next: CRMState, message: string) { try { save(next); setToast(message); return true; } catch (e) { setToast(e instanceof Error ? e.message : "Could not save your changes."); return false; } }
+  async function persist(next: CRMState, message: string) {
+    try {
+      if (activating) throw new Error("Wait for the shared workspace to finish setting up.");
+      if (localMode) local.save(next);
+      else await shared.save(next);
+      setToast(message);
+      return true;
+    } catch (failure) {
+      setToast(failure instanceof Error ? failure.message : "Could not save your changes.");
+      return false;
+    }
+  }
   function go(next: View) { setView(next); setStageFilter("All stages"); setSearch(""); setMobileNav(false); }
-  function clearWorkspace() { if (confirm("Start with an empty workspace? All current records will be removed from this browser. Export a backup first if you need them.")) persist(createEmptyState(), "Your empty workspace is ready."); }
+  async function clearWorkspace() {
+    if (!isPrimary) return;
+    const location = localMode ? "this browser" : "the shared workspace for everyone";
+    if (confirm(`Remove all customers, jobs, tasks and CRM settings from ${location}? Export a backup first if you need them.`)) {
+      if (await persist(createEmptyState(), "Your empty workspace is ready.")) setSettingsVersion((version) => version + 1);
+    }
+  }
+  async function activateWorkspace() {
+    if (!localMode || activating || shared.saving || local.error) return;
+    const next = data.demo ? createEmptyState() : data;
+    const copy = `Copy ${next.customers.length} customers, ${next.jobs.length} jobs and ${next.tasks.length} tasks into the shared CRM? Invited team members will be able to access the shared records.`;
+    const notice = data.demo ? "This browser contains sample data. Start with an empty shared workspace instead?" : copy;
+    if (!confirm(notice)) return;
+    setActivating(true);
+    try {
+      await shared.save(next);
+      setSettingsVersion((version) => version + 1);
+      setToast("Shared workspace is on.");
+    } catch (failure) {
+      setToast(failure instanceof Error ? failure.message : "Could not turn on the shared workspace.");
+    } finally {
+      setActivating(false);
+    }
+  }
+  async function refreshWorkspace() {
+    await shared.reload();
+    setJobModal(null);
+    setCustomerModal(null);
+    setSettingsVersion((version) => version + 1);
+  }
   function exportData() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = `oliphant-workspace-${today()}.json`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); setToast("Backup exported. Store it somewhere safe; it contains your customer details.");
   }
   async function importData(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
-    try { if (file.size > 5_000_000) throw new Error("Choose a backup smaller than 5 MB."); const next = validateImport(JSON.parse(await file.text())); if (confirm(`Replace this workspace with ${next.customers.length} customers and ${next.jobs.length} jobs from the backup?`)) persist(next, "Workspace restored from backup."); } catch (e) { setToast(e instanceof Error ? e.message : "This file is not a valid workspace backup."); }
+    try {
+      if (!isPrimary) return;
+      if (file.size > 5_000_000) throw new Error("Choose a backup smaller than 5 MB.");
+      const next = validateImport(JSON.parse(await file.text()));
+      const scope = localMode ? "this browser" : "the shared CRM for everyone";
+      if (confirm(`Replace the records and settings in ${scope} with ${next.customers.length} customers and ${next.jobs.length} jobs from the backup?`)) {
+        if (await persist(next, "Workspace restored from backup.")) setSettingsVersion((version) => version + 1);
+      }
+    } catch (e) { setToast(e instanceof Error ? e.message : "This file is not a valid workspace backup."); }
   }
   function changeStage(job: Job, stage: Job["stage"]) { persist({ ...data, jobs: data.jobs.map(j => j.id === job.id ? { ...j, stage } : j) }, `${job.title} marked ${stage.toLowerCase()}.`); }
-  function createWebsiteLead(lead: WebsiteLead) {
+  async function createWebsiteLead(lead: WebsiteLead) {
     const sourceMarker = `[website-lead:${lead.id}]`;
     const existingJob = data.jobs.find((job) => job.notes.includes(sourceMarker));
     if (existingJob) {
       setJobModal(existingJob);
-      setToast("That website request is already in your local workspace.");
+      setToast("That website request is already in your workspace.");
       return;
     }
     const email = lead.email.trim().toLowerCase();
@@ -125,7 +196,7 @@ export default function Dashboard() {
       customers: customer ? [...data.customers, customer] : data.customers,
       jobs: [job, ...data.jobs],
     };
-    if (persist(next, "Website request added. Confirm the details and service.")) setJobModal(job);
+    if (await persist(next, "Website request added. Confirm the details and service.")) setJobModal(job);
   }
 
   function jobTable(jobs: Job[], compact = false) {
@@ -134,7 +205,7 @@ export default function Dashboard() {
   }
   function taskPanel(full = false) {
     const tasks = data.tasks.filter(t => !query || t.title.toLowerCase().includes(query));
-    return <section className="crm-panel"><div className="crm-panel-heading"><div><h2>Follow-ups & tasks</h2><p>{data.tasks.filter(t => !t.done).length} things to keep moving</p></div>{!full && <button className="crm-text-button crm-green" onClick={() => go("Tasks")}>View all <Icon name="arrow" /></button>}</div><div className="crm-task-list">{tasks.length ? tasks.slice(0, full ? tasks.length : 4).map(task => <div className={`crm-task ${task.done ? "is-done" : ""}`} key={task.id}><label><input type="checkbox" checked={task.done} onChange={() => persist({ ...data, tasks: data.tasks.map(t => t.id === task.id ? { ...t, done: !t.done } : t) }, task.done ? "Task reopened." : "Task completed.")} /><span><strong>{task.title}</strong><span className="crm-muted">{task.dueDate ? displayDate(task.dueDate) : "No due date"}</span></span></label><button className="crm-icon-button" aria-label={`Delete task ${task.title}`} onClick={() => persist({ ...data, tasks: data.tasks.filter(t => t.id !== task.id) }, "Task deleted.")}><Icon name="close" /></button></div>) : <p className="crm-muted crm-padding">No tasks here. Add your next follow-up below.</p>}</div><form className="crm-task-add" onSubmit={event => { event.preventDefault(); const form = event.currentTarget; const input = new FormData(form); const title = String(input.get("task") ?? "").trim(); if (!title) return; if (persist({ ...data, tasks: [...data.tasks, { id: id(), title, done: false, dueDate: String(input.get("dueDate") ?? "") }] }, "Task added.")) form.reset(); }}><input name="task" placeholder="Add a follow-up…" aria-label="Task title" required maxLength={200} /><input type="date" name="dueDate" aria-label="Task due date" /><button className="crm-icon-button" type="submit" aria-label="Add task"><Icon name="plus" /></button></form></section>;
+    return <section className="crm-panel"><div className="crm-panel-heading"><div><h2>Follow-ups & tasks</h2><p>{data.tasks.filter(t => !t.done).length} things to keep moving</p></div>{!full && <button className="crm-text-button crm-green" onClick={() => go("Tasks")}>View all <Icon name="arrow" /></button>}</div><div className="crm-task-list">{tasks.length ? tasks.slice(0, full ? tasks.length : 4).map(task => <div className={`crm-task ${task.done ? "is-done" : ""}`} key={task.id}><label><input type="checkbox" checked={task.done} onChange={() => persist({ ...data, tasks: data.tasks.map(t => t.id === task.id ? { ...t, done: !t.done } : t) }, task.done ? "Task reopened." : "Task completed.")} /><span><strong>{task.title}</strong><span className="crm-muted">{task.dueDate ? displayDate(task.dueDate) : "No due date"}</span></span></label><button className="crm-icon-button" aria-label={`Delete task ${task.title}`} onClick={() => persist({ ...data, tasks: data.tasks.filter(t => t.id !== task.id) }, "Task deleted.")}><Icon name="close" /></button></div>) : <p className="crm-muted crm-padding">No tasks here. Add your next follow-up below.</p>}</div><form className="crm-task-add" onSubmit={async event => { event.preventDefault(); const form = event.currentTarget; const input = new FormData(form); const title = String(input.get("task") ?? "").trim(); if (!title) return; if (await persist({ ...data, tasks: [...data.tasks, { id: id(), title, done: false, dueDate: String(input.get("dueDate") ?? "") }] }, "Task added.")) form.reset(); }}><input name="task" placeholder="Add a follow-up…" aria-label="Task title" required maxLength={200} /><input type="date" name="dueDate" aria-label="Task due date" /><button className="crm-icon-button" type="submit" aria-label="Add task"><Icon name="plus" /></button></form></section>;
   }
   function scheduleCard(job: Job) { const customer = findCustomer(job); return <article key={job.id} className="crm-schedule-item"><div className="crm-schedule-time">{job.scheduledTime || "TBD"}<span>{job.crew || "Unassigned"}</span></div><div className="crm-schedule-info"><button className="crm-text-button" onClick={() => setJobModal(job)}><strong>{job.title}</strong></button><p>{customer.name} · {customer.address || "Address needed"}</p><Badge job={job} /></div><div className="crm-schedule-actions">{job.stage === "Scheduled" && <button className="crm-button is-small is-secondary" onClick={() => changeStage(job, "In progress")}>Start job</button>}{job.stage === "In progress" && <button className="crm-button is-small is-primary" onClick={() => changeStage(job, "Completed")}>Complete</button>}<button className="crm-icon-button" aria-label={`Edit scheduled job ${job.title}`} onClick={() => setJobModal(job)}><Icon name="arrow" /></button></div></article>; }
 
@@ -146,40 +217,67 @@ export default function Dashboard() {
     Estimates: ["Turn the next quote into a job.", "Track new requests and estimates waiting for a decision."],
     Schedule: ["The right crew. The right place.", "See what’s booked and make a plan for the work still to schedule."],
     Tasks: ["Stay one step ahead.", "A little follow-through goes a long way. Keep your next actions here."],
-    Settings: ["Make the workspace yours.", "Update your profile, services, defaults, preferences, and local data controls."],
+    Settings: ["Make the workspace yours.", "Manage your team, business, and CRM preferences."],
   };
 
   return <div className="crm-shell">
     <aside className={`crm-sidebar ${mobileNav ? "is-open" : ""}`}>
-      <Link href="/" className="crm-brand"><span className="crm-brand-mark"><Image src="/logo.png" alt="" width={42} height={42} /></span><span><strong>{data.settings.business.name}</strong><small>Owner workspace</small></span></Link>
+      <Link href="/" className="crm-brand"><span className="crm-brand-mark"><Image src="/logo.png" alt="" width={42} height={42} /></span><span><strong>{data.settings.business.name}</strong><small>CRM workspace</small></span></Link>
       <div className="crm-workspace-label">YOUR WORKSPACE</div>
       <form action="/crm/auth/logout" method="post" className="crm-signout"><button type="submit" className="crm-nav-item">Sign out</button></form>
-      <nav aria-label="CRM navigation">{nav.map(item => <button key={item.name} className={`crm-nav-item ${view === item.name ? "is-active" : ""}`} aria-current={view === item.name ? "page" : undefined} onClick={() => go(item.name)}><Icon name={item.icon} /><span>{item.name}</span>{item.name === "Leads & jobs" && <span className="crm-nav-count">{active.length}</span>}{item.name === "Tasks" && data.tasks.some(t => !t.done) && <span className="crm-nav-dot" />}</button>)}</nav>
-      <div className="crm-sidebar-bottom"><div className="crm-storage-note"><span className="crm-online-dot" /><strong>Saved in this browser</strong><p>Back up your workspace regularly. Data isn’t shared between devices.</p></div><button className="crm-nav-item" onClick={exportData}><Icon name="download" />Export backup</button><button className="crm-nav-item" onClick={() => fileRef.current?.click()}><Icon name="upload" />Import backup</button><button className="crm-nav-item" onClick={clearWorkspace}><Icon name="trash" />Clear workspace</button><input type="file" ref={fileRef} accept="application/json,.json" onChange={importData} hidden /><button type="button" className="crm-sidebar-footer crm-profile-shortcut" onClick={() => go("Settings")}><span className="crm-avatar">{initials(data.settings.profile.ownerName)}</span><span><strong>{data.settings.profile.ownerName}</strong><small>{data.settings.profile.title} · Settings</small></span></button></div>
+      <nav aria-label="CRM navigation">{nav.filter((item) => canManageSettings || item.name !== "Settings").map(item => <button key={item.name} className={`crm-nav-item ${view === item.name ? "is-active" : ""}`} aria-current={view === item.name ? "page" : undefined} onClick={() => go(item.name)}><Icon name={item.icon} /><span>{item.name}</span>{item.name === "Leads & jobs" && <span className="crm-nav-count">{active.length}</span>}{item.name === "Tasks" && data.tasks.some(t => !t.done) && <span className="crm-nav-dot" />}</button>)}</nav>
+      <div className="crm-sidebar-bottom">
+        <div className="crm-storage-note">
+          <span className="crm-online-dot" />
+          <strong>{localMode ? "Saved in this browser" : "Shared workspace"}</strong>
+          {localMode && <p>Turn on sharing to work from multiple devices.</p>}
+        </div>
+        {!localMode && <button className="crm-nav-item" type="button" disabled={shared.loading || shared.saving} onClick={() => void refreshWorkspace()}><Icon name="grid" />Refresh workspace</button>}
+        {isPrimary && <>
+          <button className="crm-nav-item" onClick={exportData}><Icon name="download" />Export backup</button>
+          <button className="crm-nav-item" onClick={() => fileRef.current?.click()}><Icon name="upload" />Import backup</button>
+          <button className="crm-nav-item" onClick={clearWorkspace}><Icon name="trash" />Clear workspace</button>
+          <input type="file" ref={fileRef} accept="application/json,.json" onChange={importData} hidden />
+        </>}
+        {canManageSettings ? <button type="button" className="crm-sidebar-footer crm-profile-shortcut" onClick={() => go("Settings")}>
+          <span className="crm-avatar">{initials(displayName)}</span><span><strong>{displayName}</strong><small>{displayRole} · Settings</small></span>
+        </button> : <div className="crm-sidebar-footer">
+          <span className="crm-avatar">{initials(displayName)}</span><span><strong>{displayName}</strong><small>{displayRole}</small></span>
+        </div>}
+      </div>
     </aside>
     <div className="crm-main">
-      <header className="crm-topbar"><button className="crm-icon-button crm-mobile-menu" aria-label="Toggle navigation" aria-expanded={mobileNav} onClick={() => setMobileNav(!mobileNav)}><Icon name={mobileNav ? "close" : "menu"} /></button><div className="crm-breadcrumb">Workspace <span>/</span> <strong>{view}</strong></div><div className="crm-topbar-actions"><label className="crm-search"><Icon name="search" /><input value={search} onChange={event => { setSearch(event.target.value); if (view === "Overview") setView("Leads & jobs"); }} placeholder="Search your workspace…" aria-label="Search workspace" /></label><button className="crm-button is-primary" onClick={() => setJobModal("new")}><Icon name="plus" /><span>New lead</span></button><button type="button" className="crm-avatar crm-profile-avatar crm-profile-button" aria-label="Open profile and settings" onClick={() => go("Settings")}>{initials(data.settings.profile.ownerName)}</button></div></header>
+      <header className="crm-topbar"><button className="crm-icon-button crm-mobile-menu" aria-label="Toggle navigation" aria-expanded={mobileNav} onClick={() => setMobileNav(!mobileNav)}><Icon name={mobileNav ? "close" : "menu"} /></button><div className="crm-breadcrumb">Workspace <span>/</span> <strong>{view}</strong></div><div className="crm-topbar-actions"><label className="crm-search"><Icon name="search" /><input value={search} onChange={event => { setSearch(event.target.value); if (view === "Overview") setView("Leads & jobs"); }} placeholder="Search your workspace…" aria-label="Search workspace" /></label><button className="crm-button is-primary" onClick={() => setJobModal("new")}><Icon name="plus" /><span>New lead</span></button>{canManageSettings && <button type="button" className="crm-avatar crm-profile-avatar crm-profile-button" aria-label="Open settings" onClick={() => go("Settings")}>{initials(displayName)}</button>}</div></header>
       <main className="crm-content">
-        {error && <div className="crm-error" role="alert">{error}</div>}
+        {error && <div className="crm-error" role="alert">
+          {error}
+          {shared.error && !shared.loading && !shared.saving && <> <button type="button" className="crm-text-button" onClick={() => void refreshWorkspace()}>Reload workspace</button></>}
+        </div>}
+        {localMode && <div className="crm-demo-banner crm-activate-banner">
+          <span><strong>Set up your shared workspace</strong> Use this browser to bring your existing records into the CRM you’ll share with your team.</span>
+          <button type="button" className="crm-button is-secondary" disabled={activating || shared.saving || shared.loading || Boolean(local.error)} onClick={() => void activateWorkspace()}>
+            {activating ? "Turning on sharing…" : "Enable shared workspace"}
+          </button>
+        </div>}
         {data.demo && <div className="crm-demo-banner"><span><strong>Sample workspace</strong> Explore with fictional customers and jobs. Your changes stay in this browser.</span><button className="crm-text-button" onClick={clearWorkspace}>Start empty <Icon name="arrow" /></button></div>}
         <div className="crm-page-heading"><div><p className="crm-eyebrow">{view === "Overview" ? "LET’S GET TO WORK" : data.settings.business.name.toUpperCase()}</p><h1>{headings[view][0]}</h1><p>{headings[view][1]}</p></div><div className="crm-date"><Icon name="calendar" />{new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}</div></div>
         {view === "Overview" && <>
           <div className="crm-stat-grid">{[{ label: "Active jobs", value: String(active.length).padStart(2, "0"), sub: `${data.jobs.filter(j => j.stage === "New lead").length} new leads to follow up`, icon: "briefcase" as const }, { label: "Pipeline value", value: money(pipeline), sub: "Estimates across active jobs", icon: "quote" as const }, { label: "On the schedule today", value: String(todayJobs.length).padStart(2, "0"), sub: "Booked and in-progress work", icon: "calendar" as const }, { label: "Completed job value", value: money(completed.reduce((sum, j) => sum + j.amount, 0)), sub: `${completed.length} completed ${completed.length === 1 ? "job" : "jobs"} · before expenses`, icon: "money" as const }].map((stat, i) => <article className={`crm-stat-card crm-stat-${i}`} key={stat.label}><div><p>{stat.label}</p><span className="crm-stat-icon"><Icon name={stat.icon} /></span></div><strong>{stat.value}</strong><small>{stat.sub}</small></article>)}</div>
           <div className="crm-overview-grid"><section className="crm-panel crm-active-panel"><div className="crm-panel-heading"><div><h2>Work in motion <span className="crm-count">{active.length}</span></h2><p>A little progress on every project.</p></div><button className="crm-text-button crm-green" onClick={() => go("Leads & jobs")}>View all jobs <Icon name="arrow" /></button></div>{jobTable(active.slice(0, 5), true)}</section><section className="crm-panel crm-today-panel"><div className="crm-panel-heading"><div><h2>Today’s schedule</h2><p>{displayDate(today(), { weekday: "long", month: "long", day: "numeric" })}</p></div><span className="crm-count">{todayJobs.length}</span></div><div className="crm-schedule-list">{todayJobs.length ? todayJobs.map(scheduleCard) : <Empty title="A little room in the day" detail="Scheduled jobs for today will appear here." />}</div><button className="crm-panel-link" onClick={() => go("Schedule")}>Open full schedule <Icon name="arrow" /></button></section>{taskPanel()}<section className="crm-panel"><div className="crm-panel-heading"><div><h2>Your service mix</h2><p>Where the work is coming from</p></div><Icon name="leaf" /></div><div className="crm-service-list">{availableServices.map((service, index) => { const count = data.jobs.filter(j => j.service === service).length; return <div className="crm-service-row" key={service}><div><span><span className={`crm-service-dot crm-service-${index}`} />{service}</span><strong>{count}</strong></div><div className="crm-progress"><span style={{ width: `${data.jobs.length ? count / data.jobs.length * 100 : 0}%` }} /></div></div>; })}</div><div className="crm-service-total"><span>Total jobs in workspace</span><strong>{data.jobs.length}</strong></div></section></div>
         </>}
-        {view === "Leads & jobs" && <WebsiteLeadsPanel onCreateLocalLead={createWebsiteLead} />}
+        {view === "Leads & jobs" && <WebsiteLeadsPanel onCreateLead={createWebsiteLead} />}
         {(view === "Leads & jobs" || view === "Estimates") && <section className="crm-panel"><div className="crm-toolbar"><div><h2>{view === "Estimates" ? "Requests & estimates" : "All leads & jobs"} <span className="crm-count">{view === "Estimates" ? estimateJobs.length : filteredJobs.length}</span></h2><p className="crm-muted">Select a job to view details and update its progress.</p></div><label className="crm-filter"><span className="crm-sr-only">Filter by stage</span><select value={stageFilter} onChange={event => setStageFilter(event.target.value)}><option>All stages</option>{(view === "Estimates" ? stages.filter(s => ["New lead", "Estimate sent"].includes(s)) : stages).map(stage => <option key={stage}>{stage}</option>)}</select></label></div>{jobTable(view === "Estimates" ? estimateJobs : filteredJobs)}</section>}
         {view === "Customers" && <section className="crm-panel"><div className="crm-toolbar"><div><h2>Your customers <span className="crm-count">{filteredCustomers.length}</span></h2><p className="crm-muted">One place for the details that matter.</p></div><button className="crm-button is-secondary" onClick={() => setCustomerModal("new")}><Icon name="plus" />Add customer</button></div>{filteredCustomers.length ? <div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Customer</th><th>Contact</th><th>Property address</th><th>Jobs</th><th><span className="crm-sr-only">Edit customer</span></th></tr></thead><tbody>{filteredCustomers.map(customer => <tr key={customer.id}><td><button className="crm-person crm-text-button" onClick={() => setCustomerModal(customer)}><span className="crm-avatar">{initials(customer.name)}</span><strong>{customer.name}</strong></button></td><td><div>{customer.email ? <a href={`mailto:${customer.email}`}>{customer.email}</a> : "No email"}</div><div className="crm-muted">{customer.phone ? <a href={`tel:${customer.phone}`}>{customer.phone}</a> : "No phone"}</div></td><td className="crm-muted">{customer.address || "Not provided"}</td><td>{data.jobs.filter(j => j.customerId === customer.id).length}</td><td><button className="crm-icon-button" aria-label={`Edit customer ${customer.name}`} onClick={() => setCustomerModal(customer)}><Icon name="arrow" /></button></td></tr>)}</tbody></table></div> : <Empty title="Make your first connection" detail="Add a customer to keep their contact and property details close." />}</section>}
         {view === "Schedule" && <div className="crm-schedule-page">{(() => { const jobs = filteredJobs.filter(j => !["Completed", "Lost"].includes(j.stage)); const dates = [...new Set(jobs.map(j => j.scheduledDate))].sort((a, b) => (a || "9999").localeCompare(b || "9999")); return dates.length ? dates.map(date => <section className="crm-panel" key={date || "unscheduled"}><div className="crm-panel-heading"><div><h2>{date ? displayDate(date, { weekday: "long", month: "long", day: "numeric" }) : "Ready to schedule"}{date === today() && <span className="crm-count">Today</span>}</h2><p>{date ? date < today() ? "Past schedule · review these jobs" : "Your plan for the day" : "Add a date to book these jobs"}</p></div><Icon name="calendar" /></div><div className="crm-schedule-list">{jobs.filter(j => j.scheduledDate === date).sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime)).map(scheduleCard)}</div></section>) : <section className="crm-panel"><Empty title="Your schedule is clear" detail="New and scheduled jobs will appear here." /></section>; })()}</div>}
         {view === "Tasks" && taskPanel(true)}
         {view === "Customer portals" && <PortalManagement localCustomers={data.customers} localJobs={data.jobs} />}
-        {view === "Settings" && <SettingsPanel data={data} onSave={(settings, message) => persist({ ...data, settings }, message)} onExport={exportData} onImport={() => fileRef.current?.click()} onClear={clearWorkspace} />}
-        <footer className="crm-content-footer"><span><Icon name="leaf" />Built around the way you work.</span><span>{data.settings.business.name} · Local workspace</span></footer>
+        {view === "Settings" && actor.role !== "manager" && <SettingsPanel key={settingsVersion} data={data} shared={!localMode} role={actor.role} onSave={(settings, message) => persist({ ...data, settings }, message)} onExport={exportData} onImport={() => fileRef.current?.click()} onClear={clearWorkspace} />}
+        <footer className="crm-content-footer"><span><Icon name="leaf" />Built around the way you work.</span><span>{data.settings.business.name} · {localMode ? "Browser workspace" : "Shared workspace"}</span></footer>
       </main>
     </div>
     <div className="crm-toast" role="status" aria-live="polite">{toast}</div>
-    {jobModal && <JobDialog key={jobModal === "new" ? "new-job" : jobModal.id} job={jobModal === "new" ? null : jobModal} data={data} onClose={() => setJobModal(null)} onSave={(job, customer) => { const next = { ...data, customers: customer ? [...data.customers, customer] : data.customers, jobs: data.jobs.some(j => j.id === job.id) ? data.jobs.map(j => j.id === job.id ? job : j) : [job, ...data.jobs] }; if (persist(next, jobModal === "new" ? "New lead added. Let’s get to work." : "Job updated.")) setJobModal(null); }} onDelete={job => { if (confirm(`Delete “${job.title}”? The customer record will stay in your workspace.`) && persist({ ...data, jobs: data.jobs.filter(j => j.id !== job.id) }, "Job deleted.")) setJobModal(null); }} />}
-    {customerModal && <CustomerDialog key={customerModal === "new" ? "new-customer" : customerModal.id} customer={customerModal === "new" ? null : customerModal} linked={customerModal === "new" ? 0 : data.jobs.filter(j => j.customerId === customerModal.id).length} onClose={() => setCustomerModal(null)} onSave={customer => { if (persist({ ...data, customers: data.customers.some(c => c.id === customer.id) ? data.customers.map(c => c.id === customer.id ? customer : c) : [...data.customers, customer] }, "Customer saved.")) setCustomerModal(null); }} onDelete={customer => { if (confirm(`Delete customer ${customer.name}?`) && persist({ ...data, customers: data.customers.filter(c => c.id !== customer.id) }, "Customer deleted.")) setCustomerModal(null); }} />}
+    {jobModal && <JobDialog key={jobModal === "new" ? "new-job" : jobModal.id} job={jobModal === "new" ? null : jobModal} data={data} onClose={() => setJobModal(null)} onSave={async (job, customer) => { const next = { ...data, customers: customer ? [...data.customers, customer] : data.customers, jobs: data.jobs.some(j => j.id === job.id) ? data.jobs.map(j => j.id === job.id ? job : j) : [job, ...data.jobs] }; if (await persist(next, jobModal === "new" ? "New lead added. Let’s get to work." : "Job updated.")) setJobModal(null); }} onDelete={async job => { if (confirm(`Delete “${job.title}”? The customer record will stay in your workspace.`) && await persist({ ...data, jobs: data.jobs.filter(j => j.id !== job.id) }, "Job deleted.")) setJobModal(null); }} />}
+    {customerModal && <CustomerDialog key={customerModal === "new" ? "new-customer" : customerModal.id} customer={customerModal === "new" ? null : customerModal} linked={customerModal === "new" ? 0 : data.jobs.filter(j => j.customerId === customerModal.id).length} onClose={() => setCustomerModal(null)} onSave={async customer => { if (await persist({ ...data, customers: data.customers.some(c => c.id === customer.id) ? data.customers.map(c => c.id === customer.id ? customer : c) : [...data.customers, customer] }, "Customer saved.")) setCustomerModal(null); }} onDelete={async customer => { if (confirm(`Delete customer ${customer.name}?`) && await persist({ ...data, customers: data.customers.filter(c => c.id !== customer.id) }, "Customer deleted.")) setCustomerModal(null); }} />}
   </div>;
 }
 
@@ -222,4 +320,3 @@ function CustomerDialog({ customer, linked, onClose, onSave, onDelete }: { custo
   const [error, setError] = useState("");
   return <Dialog title={customer ? "Customer details" : "Add a customer"} subtitle={linked ? `${linked} linked ${linked === 1 ? "job" : "jobs"} in your workspace.` : "Keep the people and property details together."} onClose={onClose}><form onSubmit={event => { event.preventDefault(); const form = new FormData(event.currentTarget); const text = (name: string) => String(form.get(name) ?? "").trim(); if (!text("name")) { setError("Enter the customer’s name."); return; } onSave({ id: customer?.id ?? id(), name: text("name"), email: text("email"), phone: text("phone"), address: text("address"), notes: text("notes") }); }}><div className="crm-form-grid"><Field label="Full name *" wide><input name="name" defaultValue={customer?.name ?? ""} required maxLength={200} /></Field><Field label="Email"><input name="email" type="email" defaultValue={customer?.email ?? ""} maxLength={254} /></Field><Field label="Phone"><input name="phone" type="tel" defaultValue={customer?.phone ?? ""} maxLength={80} /></Field><Field label="Property address" wide><input name="address" defaultValue={customer?.address ?? ""} maxLength={500} /></Field><Field label="Customer notes" wide><textarea name="notes" defaultValue={customer?.notes ?? ""} rows={4} maxLength={5000} /></Field>{error && <p className="crm-error is-wide" role="alert">{error}</p>}{customer && linked > 0 && <p className="crm-muted is-wide">To delete this customer, first remove their linked jobs.</p>}</div><div className="crm-modal-footer">{customer && <button className="crm-button is-danger" type="button" disabled={linked > 0} onClick={() => onDelete(customer)}><Icon name="trash" />Delete customer</button>}<div className="crm-modal-footer-actions"><button className="crm-button is-secondary" type="button" onClick={onClose}>Cancel</button><button className="crm-button is-primary" type="submit">Save customer<Icon name="arrow" /></button></div></div></form></Dialog>;
 }
-

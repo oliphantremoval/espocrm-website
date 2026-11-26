@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createEmailSession, SESSION_MAX_AGE_SECONDS, verifyOwnerLoginLink } from "@/lib/crm-auth-core";
 import { ownerEmailAuthConfig, privateHeaders, sessionCookieName, sessionCookieOptions } from "@/lib/crm-auth";
+import { clearTeamSession } from "@/lib/crm-team-auth";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,6 @@ export async function GET(request: Request) {
     ...sessionCookieOptions(),
     maxAge: SESSION_MAX_AGE_SECONDS,
   });
+  await clearTeamSession(response);
   return response;
 }
-

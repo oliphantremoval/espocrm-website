@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
-import { isSameOrigin, ownerAuthConfig, ownerIsSignedIn, privateHeaders } from "@/lib/crm-auth";
+import { isSameOrigin, privateHeaders } from "@/lib/crm-auth";
+import { currentCrmActor } from "@/lib/crm-team-auth";
 import { readSmallBody } from "@/lib/portal-auth";
 import { portalDb, portalJob, uuid, validatePublishedJob } from "@/lib/portal-db";
 
 export const runtime = "nodejs";
 const json = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: privateHeaders });
-async function authorized() { const config = ownerAuthConfig(); return !!config && await ownerIsSignedIn(config); }
 type Context = { params: Promise<{ id: string; jobId: string }> };
 
 export async function PATCH(request: Request, context: Context) {
-  if (!(await authorized())) return json({ error: "Unauthorized" }, 401);
+  if (!(await currentCrmActor())) return json({ error: "Unauthorized" }, 401);
   if (!isSameOrigin(request)) return json({ error: "Forbidden" }, 403);
   const { id, jobId } = await context.params;
   if (!uuid(id) || !uuid(jobId)) return json({ error: "Invalid record." }, 400);
@@ -22,11 +22,10 @@ export async function PATCH(request: Request, context: Context) {
 }
 
 export async function DELETE(request: Request, context: Context) {
-  if (!(await authorized())) return json({ error: "Unauthorized" }, 401);
+  if (!(await currentCrmActor())) return json({ error: "Unauthorized" }, 401);
   if (!isSameOrigin(request)) return json({ error: "Forbidden" }, 403);
   const { id, jobId } = await context.params;
   if (!uuid(id) || !uuid(jobId)) return json({ error: "Invalid record." }, 400);
   try { const sql = portalDb(); const rows = await sql`DELETE FROM portal_jobs WHERE customer_id=${id} AND id=${jobId} RETURNING id`; return rows.length ? json({ deleted: true }) : json({ error: "Job not found." }, 404); }
   catch { return json({ error: "Could not remove published job." }, 503); }
 }
-

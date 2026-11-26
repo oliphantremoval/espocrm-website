@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { requireOwner } from "@/lib/crm-auth";
+import { redirect } from "next/navigation";
+import { currentCrmActor } from "@/lib/crm-team-auth";
 import Dashboard from "./dashboard";
 import "./crm.css";
 
@@ -12,6 +13,7 @@ export const metadata: Metadata = {
 };
 
 export default async function CrmPage() {
-  await requireOwner();
-  return <Dashboard />;
+  const actor = await currentCrmActor();
+  if (!actor) redirect("/crm/login");
+  return <Dashboard actor={{ name: actor.name, role: actor.role }} />;
 }

@@ -1,15 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { isSameOrigin, ownerAuthConfig, ownerIsSignedIn, privateHeaders } from "@/lib/crm-auth";
+import { isSameOrigin, privateHeaders } from "@/lib/crm-auth";
+import { currentCrmActor } from "@/lib/crm-team-auth";
 import { emailAddress, field, portalCustomer, portalDb, record } from "@/lib/portal-db";
 import { readSmallBody } from "@/lib/portal-auth";
 
 export const runtime = "nodejs";
-async function authorized() { const config = ownerAuthConfig(); return !!config && await ownerIsSignedIn(config); }
 const json = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: privateHeaders });
 
 export async function GET() {
-  if (!(await authorized())) return json({ error: "Unauthorized" }, 401);
+  if (!(await currentCrmActor())) return json({ error: "Unauthorized" }, 401);
   try {
     const sql = portalDb();
     const rows = await sql`SELECT id,name,email,phone,address,enabled FROM portal_customers ORDER BY created_at DESC LIMIT 1000`;
@@ -18,7 +18,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  if (!(await authorized())) return json({ error: "Unauthorized" }, 401);
+  if (!(await currentCrmActor())) return json({ error: "Unauthorized" }, 401);
   if (!isSameOrigin(request)) return json({ error: "Forbidden" }, 403);
   try {
     const raw = await readSmallBody(request, 4096);
@@ -30,4 +30,3 @@ export async function POST(request: Request) {
     return rows.length ? json({ customer: portalCustomer(rows[0]) }, 201) : json({ error: "A customer with that email already exists." }, 409);
   } catch { return json({ error: "Customer could not be saved. Check the fields and storage connection." }, 400); }
 }
-

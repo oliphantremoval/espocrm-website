@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { isSameOrigin, ownerAuthConfig, ownerIsSignedIn, privateHeaders } from "@/lib/crm-auth";
+import { isSameOrigin, privateHeaders } from "@/lib/crm-auth";
+import { currentCrmActor } from "@/lib/crm-team-auth";
 import { getWebsiteContent, saveWebsiteContent } from "@/lib/website-content-store";
 
 export const runtime = "nodejs";
@@ -11,9 +12,11 @@ function json(payload: unknown, status = 200) {
   return NextResponse.json(payload, { status, headers: privateHeaders });
 }
 
-async function authorized(): Promise<boolean> {
-  const config = ownerAuthConfig();
-  return Boolean(config && await ownerIsSignedIn(config));
+async function accessDenied() {
+  const actor = await currentCrmActor();
+  if (!actor) return json({ error: "Please sign in." }, 401);
+  if (actor.role === "manager") return json({ error: "Only owners can edit website settings." }, 403);
+  return null;
 }
 
 async function readBody(request: Request): Promise<unknown> {
@@ -29,12 +32,14 @@ async function readBody(request: Request): Promise<unknown> {
 }
 
 export async function GET() {
-  if (!(await authorized())) return new NextResponse("Unauthorized", { status: 401, headers: privateHeaders });
+  const denied = await accessDenied();
+  if (denied) return denied;
   return json(await getWebsiteContent());
 }
 
 export async function PUT(request: Request) {
-  if (!(await authorized())) return new NextResponse("Unauthorized", { status: 401, headers: privateHeaders });
+  const denied = await accessDenied();
+  if (denied) return denied;
   if (!isSameOrigin(request)) return new NextResponse("Forbidden", { status: 403, headers: privateHeaders });
   try {
     const content = await saveWebsiteContent(await readBody(request));
@@ -46,4 +51,3 @@ export async function PUT(request: Request) {
     return json({ error: message }, 400);
   }
 }
-

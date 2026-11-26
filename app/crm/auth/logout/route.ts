@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isSameOrigin, privateHeaders, sessionCookieName, sessionCookieOptions } from "@/lib/crm-auth";
+import { clearTeamSession } from "@/lib/crm-team-auth";
 
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) return new NextResponse("Forbidden", { status: 403, headers: privateHeaders });
@@ -9,5 +10,6 @@ export async function POST(request: Request) {
     maxAge: 0,
     expires: new Date(0),
   });
+  await clearTeamSession(response);
   return response;
 }

@@ -14,7 +14,7 @@ export type WebsiteLead = {
 };
 
 type WebsiteLeadsPanelProps = {
-  onCreateLocalLead: (lead: WebsiteLead) => void;
+  onCreateLead: (lead: WebsiteLead) => Promise<void>;
 };
 
 type InboxState = {
@@ -39,7 +39,7 @@ function isLead(value: unknown): value is WebsiteLead {
   return ["id", "name", "email", "phone", "company", "description", "status", "createdAt"].every((key) => typeof lead[key] === "string");
 }
 
-export default function WebsiteLeadsPanel({ onCreateLocalLead }: WebsiteLeadsPanelProps) {
+export default function WebsiteLeadsPanel({ onCreateLead }: WebsiteLeadsPanelProps) {
   const [state, setState] = useState<InboxState>(initialState);
   const [refreshCount, setRefreshCount] = useState(0);
 
@@ -78,9 +78,8 @@ export default function WebsiteLeadsPanel({ onCreateLocalLead }: WebsiteLeadsPan
         <div className="crm-website-lead-heading"><div><strong>{lead.name}</strong><span>{lead.company || lead.status}</span></div><time dateTime={lead.createdAt}>{receivedAt(lead.createdAt)}</time></div>
         <div className="crm-website-lead-contact">{lead.email && <a href={`mailto:${lead.email}`}>{lead.email}</a>}{lead.phone && <a href={`tel:${lead.phone}`}>{lead.phone}</a>}</div>
         {lead.description && <p>{lead.description}</p>}
-        <div className="crm-website-lead-actions"><span className="crm-badge stage-new-lead"><span />{lead.status}</span><button type="button" className="crm-button is-small is-secondary" onClick={() => onCreateLocalLead(lead)}>Create local lead</button></div>
+        <div className="crm-website-lead-actions"><span className="crm-badge stage-new-lead"><span />{lead.status}</span><button type="button" className="crm-button is-small is-secondary" onClick={() => void onCreateLead(lead)}>Add to CRM</button></div>
       </article>)}
     </div>}
   </section>;
 }
-

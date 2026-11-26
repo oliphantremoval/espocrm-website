@@ -2,9 +2,10 @@ import Image from "next/image";
 import Link from "next/link";
 import "./login.css";
 
-type OwnerLoginFormProps = {
+type CrmLoginFormProps = {
   authMode?: "email" | "password";
   configured?: boolean;
+  emailEnabled?: boolean;
   emailFailed?: boolean;
   emailSent?: boolean;
   invalid?: boolean;
@@ -12,15 +13,16 @@ type OwnerLoginFormProps = {
   limited?: boolean;
 };
 
-export default function OwnerLoginForm({
+export default function CrmLoginForm({
   authMode = "password",
   configured = true,
+  emailEnabled = false,
   emailFailed = false,
   emailSent = false,
   invalid = false,
   linkInvalid = false,
   limited = false,
-}: OwnerLoginFormProps) {
+}: CrmLoginFormProps) {
   const error = limited
     ? "Too many sign-in attempts. Please wait, then try again."
     : invalid
@@ -29,7 +31,7 @@ export default function OwnerLoginForm({
         ? "That sign-in link is invalid or has expired. Please request a new one."
         : emailFailed
           ? "We could not send a sign-in link. Please try again in a moment."
-      : null;
+          : null;
 
   return (
     <main className="owner-login">
@@ -56,27 +58,27 @@ export default function OwnerLoginForm({
             </svg>
           </span>
           <p className="owner-login-eyebrow">PRIVATE WORKSPACE</p>
-          <h1 id="owner-login-title">{configured ? "Owner sign-in" : "Owner access is locked"}</h1>
+          <h1 id="owner-login-title">{configured ? "CRM sign-in" : "CRM access is locked"}</h1>
           <p className="owner-login-intro">
             {configured
-              ? authMode === "email"
-                ? "Enter your owner email and we’ll send you a secure sign-in link."
-                : "Enter your owner password to access your workspace."
-              : "This deployment needs its owner-login settings before sign-in is available."}
+              ? emailEnabled
+                ? "Enter the email address on your CRM account to receive a secure sign-in link."
+                : "Enter your owner password to access the CRM."
+              : "This deployment needs its CRM login settings before sign-in is available."}
           </p>
 
-          {configured ? authMode === "email" ? <form action="/crm/auth/request-link" method="post" className="owner-login-form">
-            {error && (
-              <p id="owner-login-error" className="owner-login-error" role="alert" aria-live="polite">
-                {error}
-              </p>
-            )}
-            {emailSent && !error && (
-              <p className="owner-login-success" role="status" aria-live="polite">
-                If this is the owner email, check its inbox for a secure sign-in link.
-              </p>
-            )}
-            <label htmlFor="crm-email">Owner email</label>
+          {error && (
+            <p id="owner-login-error" className="owner-login-error" role="alert" aria-live="polite">
+              {error}
+            </p>
+          )}
+          {emailSent && !error && (
+            <p className="owner-login-success" role="status" aria-live="polite">
+              If this address has CRM access, check its inbox for a secure sign-in link.
+            </p>
+          )}
+          {configured && emailEnabled && <form action="/crm/auth/request-link" method="post" className="owner-login-form">
+            <label htmlFor="crm-email">Email address</label>
             <input
               id="crm-email"
               name="email"
@@ -93,13 +95,9 @@ export default function OwnerLoginForm({
                 <path d="M5 12h14m-5-5 5 5-5 5" />
               </svg>
             </button>
-          </form> : <form action="/crm/auth/login" method="post" className="owner-login-form">
-            {error && (
-              <p id="owner-login-error" className="owner-login-error" role="alert" aria-live="polite">
-                {error}
-              </p>
-            )}
-            <label htmlFor="crm-password">Password</label>
+          </form>}
+          {configured && authMode === "password" && <form action="/crm/auth/login" method="post" className="owner-login-form">
+            <label htmlFor="crm-password">Owner password</label>
             <input
               id="crm-password"
               name="password"
@@ -112,12 +110,13 @@ export default function OwnerLoginForm({
               aria-describedby={error ? "owner-login-error" : undefined}
             />
             <button type="submit">
-              Sign in
+              Sign in with password
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
                 <path d="M5 12h14m-5-5 5 5-5 5" />
               </svg>
             </button>
-          </form> : <div className="owner-login-setup">
+          </form>}
+          {!configured && <div className="owner-login-setup">
             <p>In your Vercel project, add these environment variables for <strong>Production</strong>:</p>
             <dl>
               <dt><code>CRM_OWNER_EMAIL</code></dt>
@@ -137,7 +136,7 @@ export default function OwnerLoginForm({
             <p className="owner-login-setup-note">Keep these values private. There is no default password.</p>
           </div>}
 
-          <p className="owner-login-access">Owner access only.</p>
+          {configured && emailEnabled && <p className="owner-login-access">For owners and invited team members.</p>}
         </div>
 
         <div className="owner-login-footer">
@@ -148,4 +147,3 @@ export default function OwnerLoginForm({
     </main>
   );
 }
-

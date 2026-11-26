@@ -156,12 +156,13 @@ function getServerSnapshot() {
   return serverSnapshot;
 }
 
-export function useCrmStore(): {
+const skipSubscription = () => () => {};
+
+export function useCrmStore(enabled = true): {
   state: CRMState | null;
   save: (state: CRMState) => void;
   error: string | null;
 } {
-  const current = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const current = useSyncExternalStore(enabled ? subscribe : skipSubscription, enabled ? getSnapshot : getServerSnapshot, getServerSnapshot);
   return { ...current, save };
 }
-
