@@ -68,8 +68,10 @@ export default function HomePage({ content }: HomePageProps) {
           <a href="#services" className="transition hover:text-black">Services</a>
           <a href="#quote" className="transition hover:text-black">Quotes</a>
           <a href="#contact" className="transition hover:text-black">Contact</a>
+          <a href="/portal/login" className="transition hover:text-black">Customer portal</a>
           <a href={phoneHref} className="rounded-xl bg-green-700 px-6 py-3 font-semibold text-white transition hover:bg-green-800">Call Now</a>
         </nav>
+        <a href="/portal/login" className="ml-3 shrink-0 text-sm font-semibold text-green-700 md:hidden">Customer portal</a>
       </div>
     </header>
 

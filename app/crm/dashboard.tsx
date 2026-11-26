@@ -4,13 +4,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { cloneElement, useEffect, useId, useRef, useState, type FormEvent, type ReactElement, type ReactNode } from "react";
 import SettingsPanel from "./settings-panel";
+import PortalManagement from "./portal-management";
 import WebsiteLeadsPanel, { type WebsiteLead } from "./website-leads-panel";
 import { createEmptyState, initials, money, priorities, stages, validateImport, type CRMState, type Customer, type Job } from "./model";
 import { useCrmStore } from "./use-crm-store";
 
-type View = "Overview" | "Leads & jobs" | "Customers" | "Estimates" | "Schedule" | "Tasks" | "Settings";
+type View = "Overview" | "Leads & jobs" | "Customers" | "Customer portals" | "Estimates" | "Schedule" | "Tasks" | "Settings";
 type IconName = "grid" | "briefcase" | "users" | "quote" | "calendar" | "check" | "plus" | "search" | "arrow" | "download" | "upload" | "trash" | "close" | "leaf" | "clock" | "money" | "menu" | "settings";
-const nav: { name: View; icon: IconName }[] = [{ name: "Overview", icon: "grid" }, { name: "Leads & jobs", icon: "briefcase" }, { name: "Customers", icon: "users" }, { name: "Estimates", icon: "quote" }, { name: "Schedule", icon: "calendar" }, { name: "Tasks", icon: "check" }, { name: "Settings", icon: "settings" }];
+const nav: { name: View; icon: IconName }[] = [{ name: "Overview", icon: "grid" }, { name: "Leads & jobs", icon: "briefcase" }, { name: "Customers", icon: "users" }, { name: "Customer portals", icon: "users" }, { name: "Estimates", icon: "quote" }, { name: "Schedule", icon: "calendar" }, { name: "Tasks", icon: "check" }, { name: "Settings", icon: "settings" }];
 const iconPaths: Record<IconName, ReactNode> = {
   grid: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
   briefcase: <><rect x="3" y="7" width="18" height="14" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12a24 24 0 0 0 18 0M12 11v4" /></>,
@@ -141,6 +142,7 @@ export default function Dashboard() {
     Overview: ["A clear view of the work ahead.", "Your customers, your crew, and every job in between."],
     "Leads & jobs": ["Good work starts with a lead.", "Keep every request moving, from the first call to the final cleanup."],
     Customers: ["People behind every project.", "Contact details, property addresses, and the jobs you’ve done together."],
+    "Customer portals": ["Keep customers in the loop.", "Manage customer access and share project updates."],
     Estimates: ["Turn the next quote into a job.", "Track new requests and estimates waiting for a decision."],
     Schedule: ["The right crew. The right place.", "See what’s booked and make a plan for the work still to schedule."],
     Tasks: ["Stay one step ahead.", "A little follow-through goes a long way. Keep your next actions here."],
@@ -170,6 +172,7 @@ export default function Dashboard() {
         {view === "Customers" && <section className="crm-panel"><div className="crm-toolbar"><div><h2>Your customers <span className="crm-count">{filteredCustomers.length}</span></h2><p className="crm-muted">One place for the details that matter.</p></div><button className="crm-button is-secondary" onClick={() => setCustomerModal("new")}><Icon name="plus" />Add customer</button></div>{filteredCustomers.length ? <div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Customer</th><th>Contact</th><th>Property address</th><th>Jobs</th><th><span className="crm-sr-only">Edit customer</span></th></tr></thead><tbody>{filteredCustomers.map(customer => <tr key={customer.id}><td><button className="crm-person crm-text-button" onClick={() => setCustomerModal(customer)}><span className="crm-avatar">{initials(customer.name)}</span><strong>{customer.name}</strong></button></td><td><div>{customer.email ? <a href={`mailto:${customer.email}`}>{customer.email}</a> : "No email"}</div><div className="crm-muted">{customer.phone ? <a href={`tel:${customer.phone}`}>{customer.phone}</a> : "No phone"}</div></td><td className="crm-muted">{customer.address || "Not provided"}</td><td>{data.jobs.filter(j => j.customerId === customer.id).length}</td><td><button className="crm-icon-button" aria-label={`Edit customer ${customer.name}`} onClick={() => setCustomerModal(customer)}><Icon name="arrow" /></button></td></tr>)}</tbody></table></div> : <Empty title="Make your first connection" detail="Add a customer to keep their contact and property details close." />}</section>}
         {view === "Schedule" && <div className="crm-schedule-page">{(() => { const jobs = filteredJobs.filter(j => !["Completed", "Lost"].includes(j.stage)); const dates = [...new Set(jobs.map(j => j.scheduledDate))].sort((a, b) => (a || "9999").localeCompare(b || "9999")); return dates.length ? dates.map(date => <section className="crm-panel" key={date || "unscheduled"}><div className="crm-panel-heading"><div><h2>{date ? displayDate(date, { weekday: "long", month: "long", day: "numeric" }) : "Ready to schedule"}{date === today() && <span className="crm-count">Today</span>}</h2><p>{date ? date < today() ? "Past schedule · review these jobs" : "Your plan for the day" : "Add a date to book these jobs"}</p></div><Icon name="calendar" /></div><div className="crm-schedule-list">{jobs.filter(j => j.scheduledDate === date).sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime)).map(scheduleCard)}</div></section>) : <section className="crm-panel"><Empty title="Your schedule is clear" detail="New and scheduled jobs will appear here." /></section>; })()}</div>}
         {view === "Tasks" && taskPanel(true)}
+        {view === "Customer portals" && <PortalManagement localCustomers={data.customers} localJobs={data.jobs} />}
         {view === "Settings" && <SettingsPanel data={data} onSave={(settings, message) => persist({ ...data, settings }, message)} onExport={exportData} onImport={() => fileRef.current?.click()} onClear={clearWorkspace} />}
         <footer className="crm-content-footer"><span><Icon name="leaf" />Built around the way you work.</span><span>{data.settings.business.name} · Local workspace</span></footer>
       </main>
